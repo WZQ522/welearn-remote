@@ -45,7 +45,7 @@ order by created_at;
 
 `issue_invitation_codes` is not executable by `anon` or `authenticated`. The daily job runs at `16:00 UTC`, which is `00:00 Asia/Shanghai`.
 
-For a simpler desktop workflow, put the Supabase values in the Agent's local `.env` and double-click `agent/issue_invitation_codes.bat`. It prints 10 fresh codes by default; use `issue_invitation_codes.bat --count 20` for another quantity. The service-role key stays on the computer and is never shipped to the mobile page.
+For a simpler desktop workflow, put the Supabase values in the Agent's local `.env`. On Windows, double-click `agent/issue_invitation_codes.bat`; on macOS, double-click `agent/issue_invitation_codes.command`. It prints 10 fresh codes by default; use `--count 20` for another quantity. The service-role key stays on the computer and is never shipped to the mobile page.
 
 Each non-empty input line uses the existing desktop format:
 
