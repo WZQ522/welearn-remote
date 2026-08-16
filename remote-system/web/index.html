@@ -35,11 +35,11 @@
       </div>
 
       <form id="submissionForm">
-        <label class="raw-field" for="rawText">
-          <span>账号任务</span>
+        <div class="raw-field">
+          <label for="rawText"><span>账号任务</span></label>
+          <p class="format-note">每行：平台 账号 密码 [课程] [单元] [正确率]</p>
           <textarea id="rawText" name="rawText" rows="9" spellcheck="false" autocomplete="off" placeholder="u校园 账号 密码 大学英语 1234 90&#10;u校园 账号 密码 综合英语 1,2,3,4&#10;welearn 账号 密码 80" required></textarea>
-        </label>
-        <p class="format-note">每行：平台 账号 密码 [课程] [单元] [正确率]</p>
+        </div>
         <div class="form-footer">
           <div>
             <strong id="lineCount">已输入 0 条</strong>

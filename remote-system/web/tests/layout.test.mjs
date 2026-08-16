@@ -24,6 +24,7 @@ test("submission form uses the original batch text contract", () => {
   assert.match(html, /id="rawText"/);
   assert.match(html, /平台 账号 密码/);
   assert.doesNotMatch(html, /输入 JSON|任务类型|任务名称/);
+  assert.ok(html.indexOf("class=\"format-note\"") < html.indexOf("id=\"rawText\""));
 });
 
 test("design avoids gradients, decorative orbs, and viewport-scaled type", () => {

@@ -49,6 +49,7 @@ main { max-width: 760px; margin: 0 auto; }
 .records-actions { display: flex; align-items: center; gap: 9px; }
 
 form { display: grid; gap: 10px; }
+.raw-field { display: grid; gap: 7px; }
 label { display: grid; gap: 7px; color: #34413b; font-size: 13px; font-weight: 650; }
 textarea { width: 100%; min-height: 220px; padding: 12px; resize: vertical; border: 1px solid #bcc8c2; border-radius: 5px; background: #fff; color: var(--ink); outline: none; line-height: 1.55; font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; }
 textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px #d8eee6; }
