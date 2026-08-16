@@ -4,7 +4,7 @@ This directory carries the unified learning assistant's original batch-submissio
 
 ```mermaid
 flowchart LR
-    P["Mobile batch submission page"] -->|"raw text + receipt token"| S["Supabase RPC and PostgreSQL"]
+    P["Mobile page: register or login"] -->|"session token + raw text"| S["Supabase RPC and PostgreSQL"]
     S -->|"service role claim"| A["Windows Python Agent"]
     A -->|"--input input.json --output result.json"| X["Local processor"]
     X --> A
@@ -14,7 +14,8 @@ flowchart LR
 
 ## Components
 
-- `supabase/migrations/0001_remote_tasks.sql`: submission table, RLS, receipt-token RPCs, atomic Agent claim, heartbeat, retry, cancel, and execution statistics.
+- `supabase/migrations/0001_remote_tasks.sql`: user accounts, bcrypt password hashes, sessions, invitation-code consumption, submission table, RLS, receipt-token RPCs, atomic Agent claim, heartbeat, retry, cancel, and execution statistics.
+- `supabase/migrations/0002_daily_invitation_codes.sql`: optional Supabase `pg_cron` job that issues 10 new random invitation codes every day at 00:00 Asia/Shanghai.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -23,11 +24,26 @@ flowchart LR
 ## 1. Supabase
 
 1. Create a Supabase Free project.
-2. Run `supabase/migrations/0001_remote_tasks.sql` in the Supabase SQL Editor.
+2. Run `supabase/migrations/0001_remote_tasks.sql`, then `supabase/migrations/0002_daily_invitation_codes.sql` in the Supabase SQL Editor.
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 
-The browser has no direct table permissions. It calls `submit_submission`, `get_submission`, `cancel_submission`, `retry_submission`, and `clear_submission` with a random receipt token. The token is stored only in that browser's local storage; the database stores its SHA-256 digest.
+The browser has no direct table permissions. A user must register with a current invitation code or log in. Registration atomically locks and consumes one unused code; a used or expired code cannot register a second account. The browser stores only a random session token and username in local storage, never the password or invitation code. Sessions expire after 30 days.
+
+The database stores only a SHA-256 digest of session and receipt tokens. Submission RPCs require both the session token and receipt token, and check the submission's `user_id` before returning or changing a task.
+
+To issue codes manually, use the SQL Editor or service-role administration path:
+
+```sql
+select public.issue_invitation_codes(10);
+select code_text
+from public.invitation_codes
+where issue_date = (timezone('Asia/Shanghai', now()))::date
+  and used_at is null
+order by created_at;
+```
+
+`issue_invitation_codes` is not executable by `anon` or `authenticated`. The daily job runs at `16:00 UTC`, which is `00:00 Asia/Shanghai`.
 
 Each non-empty input line uses the existing desktop format:
 

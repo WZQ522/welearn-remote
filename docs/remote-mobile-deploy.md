@@ -8,8 +8,10 @@
 ## Supabase
 
 1. 在 Supabase 创建一个 Free 项目。
-2. 在 SQL Editor 执行 `remote-system/supabase/migrations/0001_remote_tasks.sql`。
+2. 在 SQL Editor 按顺序执行 `remote-system/supabase/migrations/0001_remote_tasks.sql` 和 `remote-system/supabase/migrations/0002_daily_invitation_codes.sql`。
 3. 记录 Project URL、anon public key 和 service_role key。
+
+执行第二个迁移后，系统会立即生成当天的 10 个随机邀请码，并每天 00:00（Asia/Shanghai）自动生成 10 个新码。邀请码只允许注册成功一次；查看和手动追加邀请码只在 Supabase SQL Editor 或 service-role 管理端进行，网页不会暴露邀请码列表。
 
 service_role key 只放在 Windows Agent 的 `.env`，不能放入网页或 GitHub Pages。
 
@@ -26,7 +28,7 @@ service_role key 只放在 Windows Agent 的 `.env`，不能放入网页或 GitH
 
 `https://wzq522.github.io/welearn-remote/`
 
-该地址目前可以直接用手机打开；在 Supabase 密钥配置完成前，提交按钮会保持禁用，这是为了避免把任务发送到不存在的后端。
+该地址目前可以直接用手机打开；在 Supabase 密钥配置完成前，注册、登录和提交按钮会保持禁用，这是为了避免把请求发送到不存在的后端。配置完成后，手机端先注册或登录，再提交和查看自己的任务。
 
 也可以用 GitHub CLI 写入网页端两个密钥：
 

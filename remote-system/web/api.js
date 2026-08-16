@@ -26,28 +26,64 @@ export class SupabaseSubmissionApi {
     this.fetchImpl = fetchImpl;
   }
 
-  submit({ rawText, clientId, viewToken }) {
+  register({ username, password, invitationCode }) {
+    return this.rpc("register_remote_user", {
+      p_username: username,
+      p_password: password,
+      p_invitation_code: invitationCode,
+    });
+  }
+
+  login({ username, password }) {
+    return this.rpc("login_remote_user", {
+      p_username: username,
+      p_password: password,
+    });
+  }
+
+  logout(sessionToken) {
+    return this.rpc("logout_remote_user", { p_session_token: sessionToken });
+  }
+
+  submit({ rawText, clientId, viewToken, sessionToken }) {
     return this.rpc("submit_submission", {
       p_raw_text: rawText,
       p_client_id: clientId,
       p_view_token: viewToken,
+      p_session_token: sessionToken,
     });
   }
 
-  get(submissionId, viewToken) {
-    return this.rpc("get_submission", { p_submission_id: submissionId, p_view_token: viewToken });
+  get(submissionId, viewToken, sessionToken) {
+    return this.rpc("get_submission", {
+      p_submission_id: submissionId,
+      p_view_token: viewToken,
+      p_session_token: sessionToken,
+    });
   }
 
-  cancel(submissionId, viewToken) {
-    return this.rpc("cancel_submission", { p_submission_id: submissionId, p_view_token: viewToken });
+  cancel(submissionId, viewToken, sessionToken) {
+    return this.rpc("cancel_submission", {
+      p_submission_id: submissionId,
+      p_view_token: viewToken,
+      p_session_token: sessionToken,
+    });
   }
 
-  retry(submissionId, viewToken) {
-    return this.rpc("retry_submission", { p_submission_id: submissionId, p_view_token: viewToken });
+  retry(submissionId, viewToken, sessionToken) {
+    return this.rpc("retry_submission", {
+      p_submission_id: submissionId,
+      p_view_token: viewToken,
+      p_session_token: sessionToken,
+    });
   }
 
-  clear(submissionId, viewToken) {
-    return this.rpc("clear_submission", { p_submission_id: submissionId, p_view_token: viewToken });
+  clear(submissionId, viewToken, sessionToken) {
+    return this.rpc("clear_submission", {
+      p_submission_id: submissionId,
+      p_view_token: viewToken,
+      p_session_token: sessionToken,
+    });
   }
 
   async rpc(name, body) {

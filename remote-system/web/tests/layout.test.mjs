@@ -15,9 +15,16 @@ test("mobile breakpoint keeps the batch form and actions readable", () => {
 });
 
 test("interactive commands use icon-backed buttons", () => {
-  for (const icon of ["refresh-cw", "send", "rotate-ccw", "x", "trash-2"]) {
+  for (const icon of ["refresh-cw", "send", "rotate-ccw", "x", "trash-2", "shield-check", "log-in", "user-plus", "log-out"]) {
     assert.match(html, new RegExp(`data-lucide="${icon}"`));
   }
+});
+
+test("account access requires a username, password, and invitation code", () => {
+  assert.match(html, /id="loginForm"/);
+  assert.match(html, /id="registerForm"/);
+  assert.match(html, /id="invitationCode"/);
+  assert.match(html, /id="submitButton"[^>]*disabled/);
 });
 
 test("submission form uses the original batch text contract", () => {

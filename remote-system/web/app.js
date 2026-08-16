@@ -2,8 +2,23 @@ import { randomToken, SupabaseSubmissionApi } from "./api.js";
 
 const STORAGE_KEY = "unified-remote-submission-receipts-v2";
 const CLIENT_KEY = "unified-remote-client-id-v1";
+const AUTH_KEY = "unified-remote-auth-v1";
 
 const elements = {
+  authForms: document.querySelector("#authForms"),
+  loginForm: document.querySelector("#loginForm"),
+  loginUsername: document.querySelector("#loginUsername"),
+  loginPassword: document.querySelector("#loginPassword"),
+  loginButton: document.querySelector("#loginButton"),
+  registerForm: document.querySelector("#registerForm"),
+  registerUsername: document.querySelector("#registerUsername"),
+  registerPassword: document.querySelector("#registerPassword"),
+  invitationCode: document.querySelector("#invitationCode"),
+  registerButton: document.querySelector("#registerButton"),
+  authMessage: document.querySelector("#authMessage"),
+  userSession: document.querySelector("#userSession"),
+  loggedUsername: document.querySelector("#loggedUsername"),
+  logoutButton: document.querySelector("#logoutButton"),
   form: document.querySelector("#submissionForm"),
   rawText: document.querySelector("#rawText"),
   lineCount: document.querySelector("#lineCount"),
@@ -12,6 +27,7 @@ const elements = {
   connection: document.querySelector("#connectionText"),
   refresh: document.querySelector("#refreshButton"),
   clear: document.querySelector("#clearButton"),
+  tasksBand: document.querySelector("#tasksBand"),
   list: document.querySelector("#taskList"),
   count: document.querySelector("#taskCount"),
   empty: document.querySelector("#emptyState"),
@@ -20,13 +36,32 @@ const elements = {
 
 let api = null;
 let refreshTimer = null;
+let auth = loadAuth();
 const submissionState = new Map();
 
 function countLines(value) {
   return value.split(/\r?\n/).filter(line => line.trim()).length;
 }
 
-function loadReceipts() {
+function loadAuth() {
+  try {
+    const value = JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
+    return value?.sessionToken && value?.username
+      ? { sessionToken: value.sessionToken, username: value.username }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAuth(value) {
+  auth = value;
+  if (value) localStorage.setItem(AUTH_KEY, JSON.stringify(value));
+  else localStorage.removeItem(AUTH_KEY);
+  updateAuthUI();
+}
+
+function loadStoredReceipts() {
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     return Array.isArray(value)
@@ -37,8 +72,21 @@ function loadReceipts() {
   }
 }
 
-function saveReceipts(receipts) {
+function loadReceipts() {
+  if (!auth) return [];
+  return loadStoredReceipts().filter(item => item.username === auth.username);
+}
+
+function saveReceipt(receipt) {
+  const receipts = loadStoredReceipts();
+  receipts.unshift(receipt);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts.slice(0, 50)));
+}
+
+function clearCurrentReceipts() {
+  const receipts = loadStoredReceipts().filter(item => item.username !== auth?.username);
+  if (receipts.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts));
+  else localStorage.removeItem(STORAGE_KEY);
 }
 
 function clientId() {
@@ -48,6 +96,25 @@ function clientId() {
     localStorage.setItem(CLIENT_KEY, value);
   }
   return value;
+}
+
+function friendlyError(error) {
+  const message = String(error?.message || error || "请求失败");
+  const messages = [
+    ["username_taken", "用户名已存在，请换一个用户名"],
+    ["invalid_username", "用户名需为 3-32 位字母、数字、下划线、点或短横线"],
+    ["invalid_password", "密码需为 8-128 位"],
+    ["invalid_invitation_code", "邀请码无效"],
+    ["invitation_code_used", "邀请码已使用"],
+    ["invitation_code_expired", "邀请码已过期，请使用当天生成的邀请码"],
+    ["invalid_credentials", "用户名或密码不正确"],
+    ["login_required", "登录状态已失效，请重新登录"],
+  ];
+  return messages.find(([code]) => message.includes(code))?.[1] || message;
+}
+
+function isAuthError(error) {
+  return /login_required|invalid session|session/i.test(String(error?.message || ""));
 }
 
 function statusInfo(submission) {
@@ -88,6 +155,22 @@ function messageFor(submission) {
 function formatTime(value) {
   if (!value) return "";
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+}
+
+function updateAuthUI() {
+  const loggedIn = Boolean(auth);
+  elements.authForms.hidden = loggedIn;
+  elements.userSession.hidden = !loggedIn;
+  elements.loggedUsername.textContent = loggedIn ? auth.username : "";
+  elements.tasksBand.hidden = !loggedIn;
+  elements.submit.disabled = !api || !loggedIn;
+  elements.refresh.disabled = !api || !loggedIn;
+  elements.loginButton.disabled = !api;
+  elements.registerButton.disabled = !api;
+  if (!loggedIn) {
+    clearTimeout(refreshTimer);
+    elements.connection.textContent = api ? "请登录后查看任务" : "云端尚未配置";
+  }
 }
 
 function render() {
@@ -140,13 +223,19 @@ function render() {
 }
 
 async function refreshSubmissions({ quiet = false } = {}) {
-  if (!api) return;
+  if (!api || !auth) return;
+  const activeSession = auth.sessionToken;
   const receipts = loadReceipts();
   const results = await Promise.allSettled(receipts.map(async receipt => {
-    const submission = await api.get(receipt.id, receipt.viewToken);
+    const submission = await api.get(receipt.id, receipt.viewToken, activeSession);
     if (submission) submissionState.set(receipt.id, submission);
   }));
   const failed = results.filter(result => result.status === "rejected").length;
+  if (failed && results.some(result => result.status === "rejected" && isAuthError(result.reason))) {
+    saveAuth(null);
+    elements.authMessage.textContent = "登录状态已失效，请重新登录";
+    return;
+  }
   elements.connection.textContent = failed ? `云端连接异常 (${failed})` : "云端连接正常";
   if (!quiet && failed) elements.message.textContent = "部分记录暂时无法刷新";
   render();
@@ -155,27 +244,91 @@ async function refreshSubmissions({ quiet = false } = {}) {
 
 function scheduleRefresh() {
   clearTimeout(refreshTimer);
+  if (!auth) return;
   const active = [...submissionState.values()].some(item => ["pending", "processing"].includes(item.status));
   if (active) refreshTimer = setTimeout(() => refreshSubmissions({ quiet: true }), 3000);
 }
 
 async function cancelSubmission(receipt) {
+  if (!auth) return;
   try {
-    await api.cancel(receipt.id, receipt.viewToken);
+    await api.cancel(receipt.id, receipt.viewToken, auth.sessionToken);
     await refreshSubmissions({ quiet: true });
   } catch (error) {
-    elements.message.textContent = `取消失败：${error.message}`;
+    elements.message.textContent = `取消失败：${friendlyError(error)}`;
   }
 }
 
 async function retrySubmission(receipt) {
+  if (!auth) return;
   try {
-    await api.retry(receipt.id, receipt.viewToken);
+    await api.retry(receipt.id, receipt.viewToken, auth.sessionToken);
     await refreshSubmissions({ quiet: true });
   } catch (error) {
-    elements.message.textContent = `重试失败：${error.message}`;
+    elements.message.textContent = `重试失败：${friendlyError(error)}`;
   }
 }
+
+elements.loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  elements.loginButton.disabled = true;
+  try {
+    const result = await api.login({
+      username: elements.loginUsername.value,
+      password: elements.loginPassword.value,
+    });
+    saveAuth({ sessionToken: result.session_token, username: result.username });
+    elements.loginPassword.value = "";
+    elements.authMessage.textContent = "登录成功";
+    render();
+    await refreshSubmissions({ quiet: true });
+  } catch (error) {
+    elements.authMessage.textContent = `登录失败：${friendlyError(error)}`;
+  } finally {
+    elements.loginButton.disabled = false;
+  }
+});
+
+elements.registerForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  elements.registerButton.disabled = true;
+  try {
+    const result = await api.register({
+      username: elements.registerUsername.value,
+      password: elements.registerPassword.value,
+      invitationCode: elements.invitationCode.value,
+    });
+    saveAuth({ sessionToken: result.session_token, username: result.username });
+    elements.registerPassword.value = "";
+    elements.invitationCode.value = "";
+    elements.authMessage.textContent = "注册成功，邀请码已使用";
+    render();
+    await refreshSubmissions({ quiet: true });
+  } catch (error) {
+    elements.authMessage.textContent = `注册失败：${friendlyError(error)}`;
+  } finally {
+    elements.registerButton.disabled = false;
+  }
+});
+
+elements.logoutButton.addEventListener("click", async () => {
+  const activeSession = auth?.sessionToken;
+  if (!activeSession) return;
+  elements.logoutButton.disabled = true;
+  try {
+    await api.logout(activeSession);
+  } catch {
+    // The local session is cleared even when the remote session already expired.
+  } finally {
+    saveAuth(null);
+    submissionState.clear();
+    elements.authMessage.textContent = "已退出登录";
+    render();
+    elements.logoutButton.disabled = false;
+  }
+});
 
 elements.rawText.addEventListener("input", () => {
   elements.lineCount.textContent = `已输入 ${countLines(elements.rawText.value)} 条`;
@@ -184,6 +337,10 @@ elements.rawText.addEventListener("input", () => {
 elements.form.addEventListener("submit", async event => {
   event.preventDefault();
   elements.message.textContent = "";
+  if (!auth) {
+    elements.authMessage.textContent = "请先登录或注册";
+    return;
+  }
   const rawText = elements.rawText.value;
   const lineCount = countLines(rawText);
   if (!lineCount) {
@@ -195,39 +352,48 @@ elements.form.addEventListener("submit", async event => {
   const viewToken = randomToken();
   elements.submit.disabled = true;
   try {
-    const created = await api.submit({ rawText, clientId: clientId(), viewToken });
-    const receipts = loadReceipts();
-    receipts.unshift({
+    const created = await api.submit({
+      rawText,
+      clientId: clientId(),
+      viewToken,
+      sessionToken: auth.sessionToken,
+    });
+    saveReceipt({
       id: created.id,
       viewToken,
       lineCount: created.line_count,
       createdAt: created.created_at,
+      username: auth.username,
     });
-    saveReceipts(receipts);
     elements.rawText.value = "";
     elements.lineCount.textContent = "已输入 0 条";
     elements.message.textContent = `提交成功，云端已保存 ${created.line_count} 条`;
     await refreshSubmissions({ quiet: true });
   } catch (error) {
-    elements.message.textContent = `提交失败：${error.message}`;
+    if (isAuthError(error)) {
+      saveAuth(null);
+      elements.authMessage.textContent = "登录状态已失效，请重新登录";
+    } else {
+      elements.message.textContent = `提交失败：${friendlyError(error)}`;
+    }
   } finally {
-    elements.submit.disabled = false;
+    elements.submit.disabled = !api || !auth;
   }
 });
 
 elements.clear.addEventListener("click", async () => {
   const receipts = loadReceipts();
-  if (!receipts.length || !confirm("清除当前设备上的全部提交记录？正在执行的任务不会停止。")) return;
+  if (!auth || !receipts.length || !confirm("清除当前账号在此设备上的全部提交记录？正在执行的任务不会停止。")) return;
   elements.clear.disabled = true;
   try {
-    const results = await Promise.allSettled(receipts.map(receipt => api.clear(receipt.id, receipt.viewToken)));
+    const results = await Promise.allSettled(receipts.map(receipt => api.clear(receipt.id, receipt.viewToken, auth.sessionToken)));
     if (results.some(result => result.status === "rejected")) throw new Error("部分云端记录清除失败");
-    localStorage.removeItem(STORAGE_KEY);
+    clearCurrentReceipts();
     submissionState.clear();
     elements.message.textContent = "提交记录已清除";
     render();
   } catch (error) {
-    elements.message.textContent = `清除失败：${error.message}`;
+    elements.message.textContent = `清除失败：${friendlyError(error)}`;
   } finally {
     elements.clear.disabled = false;
   }
@@ -237,12 +403,14 @@ elements.refresh.addEventListener("click", () => refreshSubmissions());
 
 try {
   api = new SupabaseSubmissionApi(window.REMOTE_TASK_CONFIG || {});
-  elements.connection.textContent = "正在读取提交记录";
+  elements.connection.textContent = auth ? "正在读取提交记录" : "请登录后查看任务";
+  updateAuthUI();
   render();
   refreshSubmissions({ quiet: true });
 } catch (error) {
   elements.connection.textContent = "云端尚未配置";
-  elements.message.textContent = error.message;
+  elements.message.textContent = friendlyError(error);
   elements.submit.disabled = true;
+  updateAuthUI();
   render();
 }

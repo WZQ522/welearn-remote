@@ -4,6 +4,8 @@ Date: 2026-08-16
 
 ## Delivered behavior
 
+- Registration requires a current invitation code; each code is consumed atomically once, and the daily `pg_cron` job issues multiple random codes.
+- Login creates a 30-day session whose raw token is kept only in the browser; task RPCs verify both session ownership and the per-submission receipt token.
 - Static mobile page submits the original per-line account batch format through Supabase RPC using only the anon key.
 - A random per-submission receipt token gates status, cancel, retry, and clear calls.
 - PostgreSQL stores pending tasks while the computer is offline.
@@ -61,5 +63,6 @@ The preflight used fixture values and did not contact Supabase.
 ## External verification still required
 
 - No Supabase project URL or keys were present, so the SQL migration was not applied to a live Supabase project.
+- The live database must run both migrations in order before registration or automatic invitation generation can work.
 - GitHub Pages preview deployment succeeded in workflow `31950231672` at `https://wzq522.github.io/welearn-remote/`.
 - Desktop width `1280` and mobile width `390` were rendered in the local browser. Both reported zero horizontal overflow; the mobile input counter changed from `0` to `2` for two non-empty lines.
