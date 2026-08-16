@@ -22,6 +22,21 @@ service_role key 只放在 Windows Agent 的 `.env`，不能放入网页或 GitH
 
 然后运行 `Deploy remote web` workflow。部署完成后，GitHub Pages 会生成手机可访问的 HTTPS 地址。
 
+当前公网预览地址：
+
+`https://wzq522.github.io/welearn-remote/`
+
+该地址目前可以直接用手机打开；在 Supabase 密钥配置完成前，提交按钮会保持禁用，这是为了避免把任务发送到不存在的后端。
+
+也可以用 GitHub CLI 写入网页端两个密钥：
+
+```sh
+gh secret set SUPABASE_URL --repo WZQ522/welearn-remote
+gh secret set SUPABASE_ANON_KEY --repo WZQ522/welearn-remote
+```
+
+写入后重新运行 `Deploy remote web` workflow。
+
 ## Windows Agent
 
 在电脑端从发布包解压 Agent，复制 `.env.example` 为 `.env`，填写：
