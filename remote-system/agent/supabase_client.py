@@ -25,6 +25,12 @@ class SupabaseAgentClient:
         result = self._rpc("claim_next_submission", {"p_agent_id": agent_id})
         return result if isinstance(result, dict) else None
 
+    def issue_invitation_codes(self, count: int = 10) -> list[str]:
+        result = self._rpc("issue_invitation_codes", {"p_count": count})
+        if not isinstance(result, list) or not all(isinstance(code, str) for code in result):
+            raise SupabaseError("Invitation code RPC returned an invalid response")
+        return result
+
     def heartbeat(self, submission_id: str, agent_id: str) -> bool:
         return bool(
             self._rpc(

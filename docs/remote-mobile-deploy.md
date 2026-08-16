@@ -13,6 +13,8 @@
 
 执行第二个迁移后，系统会立即生成当天的 10 个随机邀请码，并每天 00:00（Asia/Shanghai）自动生成 10 个新码。邀请码只允许注册成功一次；查看和手动追加邀请码只在 Supabase SQL Editor 或 service-role 管理端进行，网页不会暴露邀请码列表。
 
+电脑端也提供了快捷方式：在 Agent 的 `.env` 配好 Supabase 地址和 service role key 后，双击 `remote-system/agent/issue_invitation_codes.bat`，窗口会直接打印新邀请码；默认生成 10 个，可用 `--count 20` 调整数量。管理密钥只留在电脑端。
+
 service_role key 只放在 Windows Agent 的 `.env`，不能放入网页或 GitHub Pages。
 
 ## GitHub Pages

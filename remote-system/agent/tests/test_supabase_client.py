@@ -46,6 +46,21 @@ class SupabaseAgentClientTests(unittest.TestCase):
         self.assertEqual(captured["headers"]["Apikey"], "s" * 40)
         self.assertNotIn("s" * 40, json.dumps(captured["body"]))
 
+    def test_issue_invitation_codes_uses_admin_rpc_and_validates_array(self) -> None:
+        captured = {}
+
+        def fake_open(request, timeout):
+            captured["url"] = request.full_url
+            captured["body"] = json.loads(request.data)
+            return FakeResponse(["A" * 32, "B" * 32])
+
+        client = SupabaseAgentClient("https://project.supabase.co", "s" * 40)
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            codes = client.issue_invitation_codes(2)
+        self.assertEqual(codes, ["A" * 32, "B" * 32])
+        self.assertTrue(captured["url"].endswith("/rest/v1/rpc/issue_invitation_codes"))
+        self.assertEqual(captured["body"], {"p_count": 2})
+
 
 if __name__ == "__main__":
     unittest.main()
