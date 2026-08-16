@@ -29,35 +29,38 @@
       <div class="section-heading account-heading">
         <div>
           <p class="eyebrow">访问账户</p>
-          <h2 id="accountTitle">登录后管理任务</h2>
+          <h2 id="accountTitle">登录</h2>
         </div>
-        <span class="queue-indicator"><i data-lucide="shield-check"></i> 邀请码注册</span>
       </div>
 
       <div id="authForms" class="auth-forms">
-        <form id="loginForm" class="auth-form">
-          <h3>登录</h3>
-          <label for="loginUsername">用户名</label>
-          <input id="loginUsername" name="username" type="text" minlength="3" maxlength="32" autocomplete="username" required>
-          <label for="loginPassword">密码</label>
-          <input id="loginPassword" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
-          <button id="loginButton" class="secondary-button" type="submit">
-            <i data-lucide="log-in"></i><span>登录</span>
-          </button>
-        </form>
+        <div id="loginView" class="auth-page">
+          <form id="loginForm" class="auth-form">
+            <label for="loginUsername">用户名</label>
+            <input id="loginUsername" name="username" type="text" minlength="3" maxlength="32" autocomplete="username" required>
+            <label for="loginPassword">密码</label>
+            <input id="loginPassword" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+            <button id="loginButton" class="primary-button" type="submit">
+              <i data-lucide="log-in"></i><span>登录</span>
+            </button>
+          </form>
+          <p class="auth-switch">还没有账号？<a id="showRegisterLink" href="#register">去注册</a></p>
+        </div>
 
-        <form id="registerForm" class="auth-form">
-          <h3>注册</h3>
-          <label for="registerUsername">用户名</label>
-          <input id="registerUsername" name="username" type="text" minlength="3" maxlength="32" autocomplete="username" required>
-          <label for="registerPassword">密码</label>
-          <input id="registerPassword" name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
-          <label for="invitationCode">邀请码</label>
-          <input id="invitationCode" name="invitationCode" type="text" minlength="32" maxlength="32" pattern="[A-Fa-f0-9]{32}" spellcheck="false" autocomplete="off" required>
-          <button id="registerButton" class="primary-button" type="submit">
-            <i data-lucide="user-plus"></i><span>注册并登录</span>
-          </button>
-        </form>
+        <div id="registerView" class="auth-page" hidden>
+          <form id="registerForm" class="auth-form">
+            <label for="registerUsername">用户名</label>
+            <input id="registerUsername" name="username" type="text" minlength="3" maxlength="32" autocomplete="username" required>
+            <label for="registerPassword">密码</label>
+            <input id="registerPassword" name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+            <label for="invitationCode">邀请码</label>
+            <input id="invitationCode" name="invitationCode" type="text" minlength="32" maxlength="32" pattern="[A-Fa-f0-9]{32}" spellcheck="false" autocomplete="off" required>
+            <button id="registerButton" class="primary-button" type="submit">
+              <i data-lucide="user-plus"></i><span>注册并登录</span>
+            </button>
+          </form>
+          <p class="auth-switch">已有账号？<a id="showLoginLink" href="#">返回登录</a></p>
+        </div>
       </div>
 
       <div id="userSession" class="user-session" hidden>

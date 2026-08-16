@@ -5,7 +5,12 @@ const CLIENT_KEY = "unified-remote-client-id-v1";
 const AUTH_KEY = "unified-remote-auth-v1";
 
 const elements = {
+  accountTitle: document.querySelector("#accountTitle"),
   authForms: document.querySelector("#authForms"),
+  loginView: document.querySelector("#loginView"),
+  registerView: document.querySelector("#registerView"),
+  showRegisterLink: document.querySelector("#showRegisterLink"),
+  showLoginLink: document.querySelector("#showLoginLink"),
   loginForm: document.querySelector("#loginForm"),
   loginUsername: document.querySelector("#loginUsername"),
   loginPassword: document.querySelector("#loginPassword"),
@@ -38,6 +43,7 @@ const elements = {
 let api = null;
 let refreshTimer = null;
 let auth = loadAuth();
+let authView = window.location.hash === "#register" ? "register" : "login";
 const submissionState = new Map();
 
 function countLines(value) {
@@ -158,10 +164,23 @@ function formatTime(value) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
+function showAuthView(view, { updateHistory = false } = {}) {
+  authView = view === "register" ? "register" : "login";
+  elements.loginView.hidden = authView !== "login";
+  elements.registerView.hidden = authView !== "register";
+  if (!auth) elements.accountTitle.textContent = authView === "register" ? "注册" : "登录";
+  if (updateHistory) {
+    const url = new URL(window.location.href);
+    url.hash = authView === "register" ? "register" : "";
+    window.history.pushState(null, "", url);
+  }
+}
+
 function updateAuthUI() {
   const loggedIn = Boolean(auth);
   elements.authForms.hidden = loggedIn;
   elements.userSession.hidden = !loggedIn;
+  elements.accountTitle.textContent = loggedIn ? "账户" : authView === "register" ? "注册" : "登录";
   elements.loggedUsername.textContent = loggedIn ? auth.username : "";
   elements.submitBand.hidden = !loggedIn;
   elements.tasksBand.hidden = !loggedIn;
@@ -170,9 +189,14 @@ function updateAuthUI() {
   elements.loginButton.disabled = !api;
   elements.registerButton.disabled = !api;
   if (!loggedIn) {
+    showAuthView(authView);
     clearTimeout(refreshTimer);
     elements.connection.textContent = api ? "请登录后查看任务" : "云端尚未配置";
   }
+}
+
+function syncAuthViewFromLocation() {
+  if (!auth) showAuthView(window.location.hash === "#register" ? "register" : "login");
 }
 
 function render() {
@@ -271,6 +295,21 @@ async function retrySubmission(receipt) {
   }
 }
 
+elements.showRegisterLink.addEventListener("click", event => {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  showAuthView("register", { updateHistory: true });
+});
+
+elements.showLoginLink.addEventListener("click", event => {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  showAuthView("login", { updateHistory: true });
+});
+
+window.addEventListener("hashchange", syncAuthViewFromLocation);
+window.addEventListener("popstate", syncAuthViewFromLocation);
+
 elements.loginForm.addEventListener("submit", async event => {
   event.preventDefault();
   elements.authMessage.textContent = "";
@@ -325,6 +364,7 @@ elements.logoutButton.addEventListener("click", async () => {
     // The local session is cleared even when the remote session already expired.
   } finally {
     saveAuth(null);
+    showAuthView("login", { updateHistory: true });
     submissionState.clear();
     elements.authMessage.textContent = "已退出登录";
     render();
