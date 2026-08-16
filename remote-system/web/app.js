@@ -1,4 +1,4 @@
-import { randomToken, SupabaseSubmissionApi } from "./api.js";
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=e89ee5c";
 
 const STORAGE_KEY = "unified-remote-submission-receipts-v2";
 const CLIENT_KEY = "unified-remote-client-id-v1";
