@@ -1,5 +1,5 @@
 #!/bin/sh
-set -e
+set -u
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 if [ -f "$SCRIPT_DIR/issue_invitation_codes.py" ]; then
   AGENT_DIR="$SCRIPT_DIR"
@@ -11,5 +11,7 @@ else
 fi
 cd "$AGENT_DIR"
 python3 issue_invitation_codes.py "$@"
+STATUS=$?
 printf '\n按回车键关闭窗口...'
 read -r _
+exit "$STATUS"
