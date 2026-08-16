@@ -56,7 +56,7 @@ The preflight used fixture values and did not contact Supabase.
 - Local rollback: `../artifacts/remote-system-logic-restore-20260816/rollback.sh`
 - Desktop preview: `../artifacts/remote-system-logic-restore-20260816/web-desktop.png`
 - Mobile preview: `../artifacts/remote-system-logic-restore-20260816/web-mobile.png`
-- Legacy cloud export: `/Users/wangziqian/Documents/CloudCleanupBackups/welearn-20260816`
+- Legacy cloud export: retained outside this repository
 
 ## External verification still required
 
