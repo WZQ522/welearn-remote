@@ -61,6 +61,27 @@ test("auth operations use dedicated RPCs and send no browser secret", async () =
   assert.deepEqual(requests[2].body, { p_session_token: "s".repeat(64) });
 });
 
+test("admin operations use the authenticated session token", async () => {
+  const requests = [];
+  const api = new SupabaseSubmissionApi({
+    supabaseUrl: "https://project.supabase.co",
+    supabaseAnonKey: "anon-key-value-that-is-public",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, body: JSON.parse(options.body) });
+      return { ok: true, status: 200, text: async () => JSON.stringify(["A".repeat(32)]) };
+    },
+  });
+  await api.adminIssueInvitationCodes("s".repeat(64), 10);
+  await api.adminListInvitationCodes("s".repeat(64));
+
+  assert.deepEqual(requests.map(request => request.url.split("/").at(-1)), [
+    "admin_issue_invitation_codes",
+    "admin_list_invitation_codes",
+  ]);
+  assert.deepEqual(requests[0].body, { p_session_token: "s".repeat(64), p_count: 10 });
+  assert.deepEqual(requests[1].body, { p_session_token: "s".repeat(64), p_issue_date: null });
+});
+
 test("receipt operations use submission RPCs and send the session token", async () => {
   const requests = [];
   const api = new SupabaseSubmissionApi({

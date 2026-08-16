@@ -45,6 +45,20 @@ export class SupabaseSubmissionApi {
     return this.rpc("logout_remote_user", { p_session_token: sessionToken });
   }
 
+  adminIssueInvitationCodes(sessionToken, count = 10) {
+    return this.rpc("admin_issue_invitation_codes", {
+      p_session_token: sessionToken,
+      p_count: count,
+    });
+  }
+
+  adminListInvitationCodes(sessionToken, issueDate = null) {
+    return this.rpc("admin_list_invitation_codes", {
+      p_session_token: sessionToken,
+      p_issue_date: issueDate,
+    });
+  }
+
   submit({ rawText, clientId, viewToken, sessionToken }) {
     return this.rpc("submit_submission", {
       p_raw_text: rawText,

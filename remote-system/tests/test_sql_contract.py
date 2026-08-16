@@ -8,6 +8,9 @@ SQL = (Path(__file__).resolve().parents[1] / "supabase/migrations/0001_remote_ta
 CRON_SQL = (Path(__file__).resolve().parents[1] / "supabase/migrations/0002_daily_invitation_codes.sql").read_text(
     encoding="utf-8"
 )
+ADMIN_SQL = (Path(__file__).resolve().parents[1] / "supabase/migrations/0003_admin_accounts.sql").read_text(
+    encoding="utf-8"
+)
 
 
 class SQLContractTests(unittest.TestCase):
@@ -99,6 +102,15 @@ class SQLContractTests(unittest.TestCase):
             "agent_report_submission",
         ):
             self.assertIn(f"function public.{name}", SQL)
+
+    def test_admin_migration_requires_admin_session_for_invitation_management(self) -> None:
+        self.assertIn("add column if not exists is_admin boolean not null default false", ADMIN_SQL)
+        self.assertIn("current_remote_admin_id", ADMIN_SQL)
+        self.assertIn("if public.current_remote_admin_id(p_session_token) is null", ADMIN_SQL)
+        self.assertIn("grant execute on function public.bootstrap_admin_account(text, text) to service_role", ADMIN_SQL)
+
+    def test_admin_migration_accepts_email_style_usernames(self) -> None:
+        self.assertIn("^[a-z0-9][a-z0-9_.@-]{2,63}$", ADMIN_SQL)
 
 
 if __name__ == "__main__":

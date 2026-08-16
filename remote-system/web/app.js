@@ -21,6 +21,10 @@ const elements = {
   invitationCode: document.querySelector("#invitationCode"),
   registerButton: document.querySelector("#registerButton"),
   authMessage: document.querySelector("#authMessage"),
+  adminBand: document.querySelector("#adminBand"),
+  issueInvitationButton: document.querySelector("#issueInvitationButton"),
+  adminCodeList: document.querySelector("#adminCodeList"),
+  adminMessage: document.querySelector("#adminMessage"),
   userSession: document.querySelector("#userSession"),
   loggedUsername: document.querySelector("#loggedUsername"),
   logoutButton: document.querySelector("#logoutButton"),
@@ -54,7 +58,7 @@ function loadAuth() {
   try {
     const value = JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
     return value?.sessionToken && value?.username
-      ? { sessionToken: value.sessionToken, username: value.username }
+      ? { sessionToken: value.sessionToken, username: value.username, isAdmin: value.isAdmin === true }
       : null;
   } catch {
     return null;
@@ -109,12 +113,13 @@ function friendlyError(error) {
   const message = String(error?.message || error || "请求失败");
   const messages = [
     ["username_taken", "用户名已存在，请换一个用户名"],
-    ["invalid_username", "用户名需为 3-32 位字母、数字、下划线、点或短横线"],
+    ["invalid_username", "用户名需为 3-64 位字母、数字、下划线、点、@ 或短横线"],
     ["invalid_password", "密码需为 8-128 位"],
     ["invalid_invitation_code", "邀请码无效"],
     ["invitation_code_used", "邀请码已使用"],
     ["invitation_code_expired", "邀请码已过期，请使用当天生成的邀请码"],
     ["invalid_credentials", "用户名或密码不正确"],
+    ["admin_required", "需要管理员权限"],
     ["login_required", "登录状态已失效，请重新登录"],
   ];
   return messages.find(([code]) => message.includes(code))?.[1] || message;
@@ -184,6 +189,7 @@ function updateAuthUI() {
   elements.loggedUsername.textContent = loggedIn ? auth.username : "";
   elements.submitBand.hidden = !loggedIn;
   elements.tasksBand.hidden = !loggedIn;
+  elements.adminBand.hidden = !loggedIn || !auth.isAdmin;
   elements.submit.disabled = !api || !loggedIn;
   elements.refresh.disabled = !api || !loggedIn;
   elements.loginButton.disabled = !api;
@@ -192,6 +198,34 @@ function updateAuthUI() {
     showAuthView(authView);
     clearTimeout(refreshTimer);
     elements.connection.textContent = api ? "请登录后查看任务" : "云端尚未配置";
+  }
+}
+
+function renderAdminCodes(codes) {
+  elements.adminCodeList.replaceChildren();
+  if (!codes.length) {
+    elements.adminCodeList.textContent = "今天还没有邀请码";
+    return;
+  }
+  for (const item of codes) {
+    const row = document.createElement("div");
+    row.className = `admin-code-row${item.used_at ? " used" : ""}`;
+    const code = document.createElement("code");
+    code.textContent = item.code;
+    const state = document.createElement("span");
+    state.textContent = item.used_at ? "已使用" : "未使用";
+    row.append(code, state);
+    elements.adminCodeList.append(row);
+  }
+}
+
+async function refreshAdminCodes() {
+  if (!api || !auth?.isAdmin) return;
+  try {
+    const codes = await api.adminListInvitationCodes(auth.sessionToken);
+    renderAdminCodes(Array.isArray(codes) ? codes : []);
+  } catch (error) {
+    elements.adminMessage.textContent = `读取邀请码失败：${friendlyError(error)}`;
   }
 }
 
@@ -319,11 +353,12 @@ elements.loginForm.addEventListener("submit", async event => {
       username: elements.loginUsername.value,
       password: elements.loginPassword.value,
     });
-    saveAuth({ sessionToken: result.session_token, username: result.username });
+    saveAuth({ sessionToken: result.session_token, username: result.username, isAdmin: result.is_admin === true });
     elements.loginPassword.value = "";
     elements.authMessage.textContent = "登录成功";
     render();
     await refreshSubmissions({ quiet: true });
+    await refreshAdminCodes();
   } catch (error) {
     elements.authMessage.textContent = `登录失败：${friendlyError(error)}`;
   } finally {
@@ -367,8 +402,25 @@ elements.logoutButton.addEventListener("click", async () => {
     showAuthView("login", { updateHistory: true });
     submissionState.clear();
     elements.authMessage.textContent = "已退出登录";
+    elements.adminMessage.textContent = "";
+    renderAdminCodes([]);
     render();
     elements.logoutButton.disabled = false;
+  }
+});
+
+elements.issueInvitationButton.addEventListener("click", async () => {
+  if (!auth?.isAdmin) return;
+  elements.issueInvitationButton.disabled = true;
+  elements.adminMessage.textContent = "正在生成邀请码";
+  try {
+    await api.adminIssueInvitationCodes(auth.sessionToken, 10);
+    elements.adminMessage.textContent = "已生成 10 个当天邀请码";
+    await refreshAdminCodes();
+  } catch (error) {
+    elements.adminMessage.textContent = `生成失败：${friendlyError(error)}`;
+  } finally {
+    elements.issueInvitationButton.disabled = false;
   }
 });
 
@@ -449,6 +501,7 @@ try {
   updateAuthUI();
   render();
   refreshSubmissions({ quiet: true });
+  refreshAdminCodes();
 } catch (error) {
   elements.connection.textContent = "云端尚未配置";
   elements.message.textContent = friendlyError(error);
