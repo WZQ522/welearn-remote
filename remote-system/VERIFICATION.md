@@ -61,5 +61,5 @@ The preflight used fixture values and did not contact Supabase.
 ## External verification still required
 
 - No Supabase project URL or keys were present, so the SQL migration was not applied to a live Supabase project.
-- No new Cloudflare Pages or GitHub Pages deployment was created.
+- GitHub Pages preview deployment succeeded in workflow `31950231672` at `https://wzq522.github.io/welearn-remote/`.
 - Desktop width `1280` and mobile width `390` were rendered in the local browser. Both reported zero horizontal overflow; the mobile input counter changed from `0` to `2` for two non-empty lines.
