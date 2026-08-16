@@ -18,7 +18,11 @@ export function randomToken(bytes = 32, cryptoObject = globalThis.crypto) {
 }
 
 export class SupabaseSubmissionApi {
-  constructor({ supabaseUrl, supabaseAnonKey, fetchImpl = globalThis.fetch }) {
+  constructor({
+    supabaseUrl,
+    supabaseAnonKey,
+    fetchImpl = (...args) => globalThis.fetch(...args),
+  }) {
     this.origin = normalizeOrigin(supabaseUrl);
     if (!supabaseAnonKey || supabaseAnonKey.length < 20) throw new Error("Supabase 公共密钥尚未配置");
     if (typeof fetchImpl !== "function") throw new Error("浏览器请求功能不可用");
