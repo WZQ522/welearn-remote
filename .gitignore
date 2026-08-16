@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+remote-system/web/dist/
+remote-system/web/config.js
+remote-system/agent/work/
+remote-system/agent/logs/
+remote-system/agent/__pycache__/
+remote-system/agent/tests/__pycache__/
+*.pyc
+

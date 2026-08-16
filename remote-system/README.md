@@ -1,0 +1,130 @@
+# Free remote submission system
+
+This directory carries the unified learning assistant's original batch-submission workflow over a static mobile console, Supabase storage, and a Windows Python Agent without a VPS.
+
+```mermaid
+flowchart LR
+    P["Mobile batch submission page"] -->|"raw text + receipt token"| S["Supabase RPC and PostgreSQL"]
+    S -->|"service role claim"| A["Windows Python Agent"]
+    A -->|"--input input.json --output result.json"| X["Local processor"]
+    X --> A
+    A -->|"status and result JSON"| S
+    S --> P
+```
+
+## Components
+
+- `supabase/migrations/0001_remote_tasks.sql`: submission table, RLS, receipt-token RPCs, atomic Agent claim, heartbeat, retry, cancel, and execution statistics.
+- `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
+- `agent/`: standard-library Python Agent for Windows.
+- `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
+- `agent/mock_processor.py`: development fixture when the real executable is not available.
+
+## 1. Supabase
+
+1. Create a Supabase Free project.
+2. Run `supabase/migrations/0001_remote_tasks.sql` in the Supabase SQL Editor.
+3. Record the project URL, public anon key, and service-role key.
+4. Keep the service-role key only in `agent/.env` on the Windows computer.
+
+The browser has no direct table permissions. It calls `submit_submission`, `get_submission`, `cancel_submission`, `retry_submission`, and `clear_submission` with a random receipt token. The token is stored only in that browser's local storage; the database stores its SHA-256 digest.
+
+Each non-empty input line uses the existing desktop format:
+
+```text
+平台 账号 密码 [课程] [单元] [正确率]
+```
+
+## 2. Static web
+
+Build with public values:
+
+```sh
+cd remote-system/web
+SUPABASE_URL=https://PROJECT.supabase.co \
+SUPABASE_ANON_KEY=PUBLIC_ANON_KEY \
+npm run build
+```
+
+The output is `remote-system/web/dist`.
+
+Cloudflare Pages:
+
+```sh
+npx wrangler pages deploy dist --project-name unified-task-console
+```
+
+For Cloudflare Git integration, set the build command to `npm run build`, output directory to `dist`, root directory to `remote-system/web`, and add `SUPABASE_URL` plus `SUPABASE_ANON_KEY` as build variables.
+
+GitHub Pages is supported by `.github/workflows/deploy-remote-web.yml`. Configure repository secrets `SUPABASE_URL` and `SUPABASE_ANON_KEY`, then run the workflow.
+
+## 3. Windows Agent
+
+Create `remote-system/agent/.env` from the keys in `remote-system/.env.example`. The default real processor setting is:
+
+```dotenv
+PROCESSOR_COMMAND_JSON=["my-program.exe"]
+```
+
+For the included fixture:
+
+```dotenv
+PROCESSOR_COMMAND_JSON=["python","mock_processor.py"]
+```
+
+Validate and run:
+
+```bat
+check_agent.bat
+run_agent.bat
+```
+
+Install automatic startup from PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install_startup.ps1
+```
+
+The scheduled task starts at user logon, restarts after failures, and uses a stable `AGENT_ID`. A processing task remains in Supabase while the computer is off. After its heartbeat lease expires, the restarted Agent claims and processes it again.
+
+## Processor contract
+
+The adapter creates a separate directory for each task attempt and invokes:
+
+```text
+my-program.exe --input input.json --output result.json
+```
+
+`input.json` preserves one phone submission as a batch:
+
+```json
+{
+  "submission_id": "uuid",
+  "raw_text": "u校园 account password course 1,2,3 90",
+  "line_count": 1,
+  "attempt_count": 1
+}
+```
+
+The processor must exit with code `0` and write valid UTF-8 JSON to `result.json`:
+
+```json
+{
+  "execution_status": "completed",
+  "task_total": 1,
+  "task_completed": 1,
+  "task_failed": 0,
+  "result_message": "执行完成"
+}
+```
+
+`execution_status` accepts `completed`, `partial`, `needs_action`, or `failed`. Stdout and stderr stay in the local attempt directory and are not uploaded. Replace only `PROCESSOR_COMMAND_JSON` when the real program becomes available.
+
+## Tests
+
+```sh
+python3 -m unittest discover -s remote-system/agent/tests -v
+python3 -m unittest discover -s remote-system/tests -v
+npm test --prefix remote-system/web
+```
