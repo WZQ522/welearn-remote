@@ -26,3 +26,19 @@ test("build injects public config without a service-role key", async () => {
   assert.equal((await stat(path.join(root, "dist", "index.html"))).isFile(), true);
 });
 
+test("build can publish a disabled preview before Supabase is configured", async () => {
+  const result = spawnSync(process.execPath, ["build.mjs"], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      SUPABASE_URL: "",
+      SUPABASE_ANON_KEY: "",
+      ALLOW_UNCONFIGURED: "1",
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const config = await readFile(path.join(root, "dist", "config.js"), "utf8");
+  assert.match(config, /"supabaseUrl":""/);
+  assert.match(config, /"supabaseAnonKey":""/);
+});

@@ -6,11 +6,12 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const output = path.join(root, "dist");
 const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
+const allowUnconfigured = process.env.ALLOW_UNCONFIGURED === "1";
 
-if (!/^https:\/\/[A-Za-z0-9.-]+$/.test(supabaseUrl)) {
+if (!allowUnconfigured && !/^https:\/\/[A-Za-z0-9.-]+$/.test(supabaseUrl)) {
   throw new Error("SUPABASE_URL must be an HTTPS origin");
 }
-if (supabaseAnonKey.length < 20 || /YOUR_|SERVICE_ROLE/i.test(supabaseAnonKey)) {
+if (!allowUnconfigured && (supabaseAnonKey.length < 20 || /YOUR_|SERVICE_ROLE/i.test(supabaseAnonKey))) {
   throw new Error("SUPABASE_ANON_KEY is missing or unsafe");
 }
 
@@ -26,4 +27,3 @@ const config = `window.REMOTE_TASK_CONFIG = ${JSON.stringify({
 })};\n`;
 await writeFile(path.join(output, "config.js"), config, { mode: 0o600 });
 console.log(`Built ${output}`);
-

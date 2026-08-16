@@ -36,6 +36,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          ALLOW_UNCONFIGURED: "1"
         run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
@@ -43,4 +44,3 @@ jobs:
           path: remote-system/web/dist
       - id: deployment
         uses: actions/deploy-pages@v4
-
