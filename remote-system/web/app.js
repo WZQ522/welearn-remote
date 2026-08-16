@@ -27,6 +27,7 @@ const elements = {
   connection: document.querySelector("#connectionText"),
   refresh: document.querySelector("#refreshButton"),
   clear: document.querySelector("#clearButton"),
+  submitBand: document.querySelector("#submitBand"),
   tasksBand: document.querySelector("#tasksBand"),
   list: document.querySelector("#taskList"),
   count: document.querySelector("#taskCount"),
@@ -162,6 +163,7 @@ function updateAuthUI() {
   elements.authForms.hidden = loggedIn;
   elements.userSession.hidden = !loggedIn;
   elements.loggedUsername.textContent = loggedIn ? auth.username : "";
+  elements.submitBand.hidden = !loggedIn;
   elements.tasksBand.hidden = !loggedIn;
   elements.submit.disabled = !api || !loggedIn;
   elements.refresh.disabled = !api || !loggedIn;

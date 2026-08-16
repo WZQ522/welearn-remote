@@ -24,6 +24,8 @@ test("account access requires a username, password, and invitation code", () => 
   assert.match(html, /id="loginForm"/);
   assert.match(html, /id="registerForm"/);
   assert.match(html, /id="invitationCode"/);
+  assert.match(html, /id="submitBand"[^>]*hidden/);
+  assert.match(html, /id="tasksBand"[^>]*hidden/);
   assert.match(html, /id="submitButton"[^>]*disabled/);
 });
 
