@@ -65,6 +65,15 @@ test("task history is account-scoped instead of device-scoped", () => {
   assert.match(app, /api\.submitBatch\(/);
 });
 
+test("every batch renders an execution score distribution module", () => {
+  assert.match(app, /batchScoreSummary/);
+  assert.match(app, /执行完成总分/);
+  assert.match(app, /className = "batch-score-summary"/);
+  assert.match(css, /\.score-overview-grid/);
+  assert.match(css, /\.score-band-grid/);
+  assert.match(css, /\.score-overview-grid, \.score-band-grid \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
+});
+
 test("design avoids gradients, decorative orbs, and viewport-scaled type", () => {
   assert.doesNotMatch(css, /gradient\s*\(/i);
   assert.doesNotMatch(`${html}\n${css}`, /\borb\b/i);

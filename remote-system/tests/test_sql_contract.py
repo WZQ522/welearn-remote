@@ -29,6 +29,9 @@ ACCOUNT_BATCH_SQL = (
 LIVE_PROGRESS_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0009_live_progress_claims.sql"
 ).read_text(encoding="utf-8")
+SCORE_SUMMARY_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0010_remote_score_summaries.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -226,6 +229,17 @@ class SQLContractTests(unittest.TestCase):
         self.assertIn("submission.id <> all", LIVE_PROGRESS_SQL)
         self.assertIn("grant execute on function public.agent_update_submission_progress", LIVE_PROGRESS_SQL)
         self.assertIn("grant execute on function public.claim_next_submission_excluding", LIVE_PROGRESS_SQL)
+
+    def test_owned_task_history_returns_structured_scores_without_account_secrets(self) -> None:
+        self.assertIn("function public.list_my_submissions", SCORE_SUMMARY_SQL)
+        self.assertIn("submission.user_id = owner_id", SCORE_SUMMARY_SQL)
+        self.assertIn("'result_payload', submission.result_payload", SCORE_SUMMARY_SQL)
+        self.assertNotIn("'raw_text', submission.raw_text", SCORE_SUMMARY_SQL)
+        self.assertNotIn("password_hash", SCORE_SUMMARY_SQL)
+        self.assertIn(
+            "grant execute on function public.list_my_submissions(text, integer) to anon, authenticated",
+            SCORE_SUMMARY_SQL,
+        )
 
 
 if __name__ == "__main__":

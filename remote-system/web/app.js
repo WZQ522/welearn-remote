@@ -1,5 +1,5 @@
 import { randomToken, SupabaseSubmissionApi } from "./api.js?v=account-tasks-v1";
-import { batchStatus, groupSubmissions } from "./task-model.js?v=account-tasks-v1";
+import { batchScoreSummary, batchStatus, groupSubmissions } from "./task-model.js?v=account-scores-v1";
 
 const CLIENT_KEY = "unified-remote-client-id-v1";
 const AUTH_KEY = "unified-remote-auth-v1";
@@ -362,6 +362,84 @@ function batchSummary(items) {
   return parts.join(" · ");
 }
 
+function scoreText(value) {
+  return Number.isFinite(value) ? Number(value).toFixed(2) : "-";
+}
+
+function scoreBandGrid(distribution) {
+  const grid = document.createElement("div");
+  grid.className = "score-band-grid";
+  const bands = [
+    ["100分", distribution.score100],
+    ["90-99", distribution.score90To99],
+    ["80-89", distribution.score80To89],
+    ["60-79", distribution.score60To79],
+    ["60以下", distribution.scoreBelow60],
+  ];
+  for (const [label, count] of bands) {
+    const item = document.createElement("div");
+    const value = document.createElement("strong");
+    value.textContent = String(count);
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    item.append(value, caption);
+    grid.append(item);
+  }
+  return grid;
+}
+
+function scoreDistributionRow(label, distribution) {
+  const row = document.createElement("div");
+  row.className = "score-distribution-row";
+  const caption = document.createElement("span");
+  caption.className = "score-distribution-label";
+  caption.textContent = label;
+  row.append(caption, scoreBandGrid(distribution));
+  return row;
+}
+
+function renderBatchScoreSummary(items) {
+  const summary = batchScoreSummary(items);
+  const section = document.createElement("section");
+  section.className = "batch-score-summary";
+
+  const heading = document.createElement("header");
+  const title = document.createElement("h4");
+  title.innerHTML = '<i data-lucide="chart-no-axes-column"></i><span>执行完成总分</span>';
+  const status = document.createElement("p");
+  status.textContent = `${summary.statusText} · 计分账号 ${summary.scoredAccountCount} · 无计分 ${summary.unscoredAccountCount}`;
+  heading.append(title, status);
+  section.append(heading);
+
+  if (summary.averageScore === null) {
+    const empty = document.createElement("p");
+    empty.className = "score-summary-empty";
+    empty.textContent = "暂无真实计分数据";
+    section.append(empty);
+    return section;
+  }
+
+  const overview = document.createElement("div");
+  overview.className = "score-overview-grid";
+  for (const [label, value] of [
+    ["账号平均", summary.averageScore],
+    ["最高", summary.highestScore],
+    ["最低", summary.lowestScore],
+  ]) {
+    const metric = document.createElement("div");
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const score = document.createElement("strong");
+    score.textContent = scoreText(value);
+    metric.append(caption, score);
+    overview.append(metric);
+  }
+  section.append(overview);
+  section.append(scoreDistributionRow("账号分布", summary.accountDistribution));
+  section.append(scoreDistributionRow("计分题分布", summary.itemDistribution));
+  return section;
+}
+
 function render() {
   const submissions = [...submissionState.values()];
   const groups = groupSubmissions(submissions);
@@ -391,7 +469,7 @@ function render() {
     const taskList = document.createElement("div");
     taskList.className = "batch-task-list";
     for (const submission of group.items) taskList.append(renderTask(submission));
-    section.append(header, taskList);
+    section.append(header, renderBatchScoreSummary(group.items), taskList);
     elements.list.append(section);
   }
   window.lucide?.createIcons();

@@ -23,6 +23,7 @@ flowchart LR
 - `supabase/migrations/0007_account_submission_data.sql`: provides account-scoped task history and task actions so the same login sees the same data on every device.
 - `supabase/migrations/0008_account_task_batches.sql`: splits each new batch into independently controllable account tasks while preserving legacy batches as single history items.
 - `supabase/migrations/0009_live_progress_claims.sql`: prevents the desktop client from reclaiming its own active submissions and keeps execution-attempt counts accurate.
+- `supabase/migrations/0010_remote_score_summaries.sql`: returns the authenticated user's structured score summaries so each website batch can show real account and scored-item distributions.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -31,7 +32,7 @@ flowchart LR
 ## 1. Supabase
 
 1. Create a Supabase Free project.
-2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0009_live_progress_claims.sql` in numeric order in the Supabase SQL Editor.
+2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0010_remote_score_summaries.sql` in numeric order in the Supabase SQL Editor.
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 
