@@ -1,6 +1,5 @@
-import { randomToken, SupabaseSubmissionApi } from "./api.js?v=task-actions-v1";
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=account-data-v1";
 
-const STORAGE_KEY = "unified-remote-submission-receipts-v2";
 const CLIENT_KEY = "unified-remote-client-id-v1";
 const AUTH_KEY = "unified-remote-auth-v1";
 
@@ -39,7 +38,6 @@ const elements = {
   message: document.querySelector("#formMessage"),
   connection: document.querySelector("#connectionText"),
   refresh: document.querySelector("#refreshButton"),
-  clear: document.querySelector("#clearButton"),
   submitBand: document.querySelector("#submitBand"),
   tasksBand: document.querySelector("#tasksBand"),
   list: document.querySelector("#taskList"),
@@ -74,40 +72,6 @@ function saveAuth(value) {
   if (value) localStorage.setItem(AUTH_KEY, JSON.stringify(value));
   else localStorage.removeItem(AUTH_KEY);
   updateAuthUI();
-}
-
-function loadStoredReceipts() {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    return Array.isArray(value)
-      ? value.filter(item => item?.id && item?.viewToken).slice(0, 50)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadReceipts() {
-  if (!auth) return [];
-  return loadStoredReceipts().filter(item => item.username === auth.username);
-}
-
-function saveReceipt(receipt) {
-  const receipts = loadStoredReceipts();
-  receipts.unshift(receipt);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts.slice(0, 50)));
-}
-
-function removeReceipt(receiptId) {
-  const receipts = loadStoredReceipts().filter(item => item.id !== receiptId);
-  if (receipts.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts));
-  else localStorage.removeItem(STORAGE_KEY);
-}
-
-function clearCurrentReceipts() {
-  const receipts = loadStoredReceipts().filter(item => item.username !== auth?.username);
-  if (receipts.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts));
-  else localStorage.removeItem(STORAGE_KEY);
 }
 
 function clientId() {
@@ -349,29 +313,19 @@ function syncAuthViewFromLocation() {
 }
 
 function render() {
-  const receipts = loadReceipts();
+  const submissions = [...submissionState.values()].sort(
+    (left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0),
+  );
   elements.list.replaceChildren();
-  elements.count.textContent = `${receipts.length} 批`;
-  elements.empty.hidden = receipts.length > 0;
-  elements.clear.hidden = receipts.length === 0;
+  elements.count.textContent = `${submissions.length} 批`;
+  elements.empty.hidden = submissions.length > 0;
 
-  for (const receipt of receipts) {
-    const submission = submissionState.get(receipt.id) || {
-      id: receipt.id,
-      status: "pending",
-      execution_status: "waiting",
-      line_count: receipt.lineCount,
-      task_total: receipt.lineCount,
-      task_completed: 0,
-      task_failed: 0,
-      created_at: receipt.createdAt,
-      attempt_count: 0,
-    };
+  for (const submission of submissions) {
     const status = statusInfo(submission);
     const progress = progressInfo(submission);
     const card = elements.template.content.firstElementChild.cloneNode(true);
     card.dataset.status = status.tone;
-    card.querySelector(".task-title").textContent = `批量任务 · ${submission.line_count || receipt.lineCount || 0} 条账号`;
+    card.querySelector(".task-title").textContent = `批量任务 · ${submission.line_count || 0} 条账号`;
     card.querySelector(".task-time").textContent = formatTime(submission.created_at);
     card.querySelector(".status-badge").textContent = status.label;
     card.querySelector(".progress-count").textContent = `进度 ${progress.settled} / ${progress.total}`;
@@ -384,17 +338,17 @@ function render() {
 
     const cancel = card.querySelector(".cancel-button");
     cancel.hidden = !["pending", "processing"].includes(submission.status) || submission.cancel_requested;
-    cancel.addEventListener("click", () => cancelSubmission(receipt));
+    cancel.addEventListener("click", () => cancelSubmission(submission));
 
     const remove = card.querySelector(".delete-button");
-    remove.addEventListener("click", () => deleteSubmission(receipt, submission));
+    remove.addEventListener("click", () => deleteSubmission(submission));
 
     const retry = card.querySelector(".retry-button");
     retry.hidden = !(
       ["failed", "canceled"].includes(submission.status)
       || ["needs_action", "partial", "failed"].includes(submission.execution_status)
     );
-    retry.addEventListener("click", () => retrySubmission(receipt));
+    retry.addEventListener("click", () => retrySubmission(submission));
     elements.list.append(card);
   }
   window.lucide?.createIcons();
@@ -403,19 +357,23 @@ function render() {
 async function refreshSubmissions({ quiet = false } = {}) {
   if (!api || !auth) return;
   const activeSession = auth.sessionToken;
-  const receipts = loadReceipts();
-  const results = await Promise.allSettled(receipts.map(async receipt => {
-    const submission = await api.get(receipt.id, receipt.viewToken, activeSession);
-    if (submission) submissionState.set(receipt.id, submission);
-  }));
-  const failed = results.filter(result => result.status === "rejected").length;
-  if (failed && results.some(result => result.status === "rejected" && isAuthError(result.reason))) {
-    saveAuth(null);
-    elements.authMessage.textContent = "登录状态已失效，请重新登录";
-    return;
+  try {
+    const submissions = await api.listMine(activeSession);
+    if (auth?.sessionToken !== activeSession) return;
+    submissionState.clear();
+    for (const submission of Array.isArray(submissions) ? submissions : []) {
+      if (submission?.id) submissionState.set(submission.id, submission);
+    }
+    elements.connection.textContent = "云端连接正常";
+  } catch (error) {
+    if (isAuthError(error)) {
+      saveAuth(null);
+      elements.authMessage.textContent = "登录状态已失效，请重新登录";
+      return;
+    }
+    elements.connection.textContent = "云端连接异常";
+    if (!quiet) elements.message.textContent = `读取失败：${friendlyError(error)}`;
   }
-  elements.connection.textContent = failed ? `云端连接异常 (${failed})` : "云端连接正常";
-  if (!quiet && failed) elements.message.textContent = "部分记录暂时无法刷新";
   render();
   scheduleRefresh();
 }
@@ -427,17 +385,17 @@ function scheduleRefresh() {
   if (active) refreshTimer = setTimeout(() => refreshSubmissions({ quiet: true }), 3000);
 }
 
-async function cancelSubmission(receipt) {
+async function cancelSubmission(submission) {
   if (!auth || !confirm("只取消这一条任务吗？其他任务会继续执行。")) return;
   try {
-    await api.cancel(receipt.id, receipt.viewToken, auth.sessionToken);
+    await api.cancelMine(submission.id, auth.sessionToken);
     await refreshSubmissions({ quiet: true });
   } catch (error) {
     elements.message.textContent = `取消失败：${friendlyError(error)}`;
   }
 }
 
-async function deleteSubmission(receipt, submission) {
+async function deleteSubmission(submission) {
   if (!auth) return;
   const active = ["pending", "processing"].includes(submission.status);
   const prompt = active
@@ -446,10 +404,9 @@ async function deleteSubmission(receipt, submission) {
   if (!confirm(prompt)) return;
 
   try {
-    const deleted = await api.remove(receipt.id, receipt.viewToken, auth.sessionToken);
+    const deleted = await api.removeMine(submission.id, auth.sessionToken);
     if (deleted !== true) throw new Error("任务不存在或已经删除");
-    removeReceipt(receipt.id);
-    submissionState.delete(receipt.id);
+    submissionState.delete(submission.id);
     elements.message.textContent = "已删除 1 条任务";
     render();
     scheduleRefresh();
@@ -458,10 +415,10 @@ async function deleteSubmission(receipt, submission) {
   }
 }
 
-async function retrySubmission(receipt) {
+async function retrySubmission(submission) {
   if (!auth) return;
   try {
-    await api.retry(receipt.id, receipt.viewToken, auth.sessionToken);
+    await api.retryMine(submission.id, auth.sessionToken);
     await refreshSubmissions({ quiet: true });
   } catch (error) {
     elements.message.textContent = `重试失败：${friendlyError(error)}`;
@@ -591,13 +548,6 @@ elements.form.addEventListener("submit", async event => {
       viewToken,
       sessionToken: auth.sessionToken,
     });
-    saveReceipt({
-      id: created.id,
-      viewToken,
-      lineCount: created.line_count,
-      createdAt: created.created_at,
-      username: auth.username,
-    });
     elements.rawText.value = "";
     elements.lineCount.textContent = "已输入 0 条";
     elements.message.textContent = `提交成功，云端已保存 ${created.line_count} 条`;
@@ -611,24 +561,6 @@ elements.form.addEventListener("submit", async event => {
     }
   } finally {
     elements.submit.disabled = !api || !auth;
-  }
-});
-
-elements.clear.addEventListener("click", async () => {
-  const receipts = loadReceipts();
-  if (!auth || !receipts.length || !confirm("清除当前账号在此设备上的全部提交记录？正在执行的任务不会停止。")) return;
-  elements.clear.disabled = true;
-  try {
-    const results = await Promise.allSettled(receipts.map(receipt => api.clear(receipt.id, receipt.viewToken, auth.sessionToken)));
-    if (results.some(result => result.status === "rejected")) throw new Error("部分云端记录清除失败");
-    clearCurrentReceipts();
-    submissionState.clear();
-    elements.message.textContent = "提交记录已清除";
-    render();
-  } catch (error) {
-    elements.message.textContent = `清除失败：${friendlyError(error)}`;
-  } finally {
-    elements.clear.disabled = false;
   }
 });
 

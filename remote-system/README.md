@@ -20,6 +20,7 @@ flowchart LR
 - `supabase/migrations/0004_admin_console_and_invitation_rotation.sql`: replaces today's unused codes before issuing 10 fresh codes, retains used-code history, and adds the admin account-list RPC.
 - `supabase/migrations/0005_admin_user_actions.sql`: lets admins reset ordinary-account passwords to `11111111` or delete ordinary accounts, while protecting admin accounts.
 - `supabase/migrations/0006_individual_submission_actions.sql`: lets a signed-in user delete one owned submission, including an active submission that the Agent will stop on its next heartbeat.
+- `supabase/migrations/0007_account_submission_data.sql`: provides account-scoped task history and task actions so the same login sees the same data on every device.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -28,7 +29,7 @@ flowchart LR
 ## 1. Supabase
 
 1. Create a Supabase Free project.
-2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0006_individual_submission_actions.sql` in numeric order in the Supabase SQL Editor.
+2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0007_account_submission_data.sql` in numeric order in the Supabase SQL Editor.
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 

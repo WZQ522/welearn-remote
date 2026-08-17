@@ -20,6 +20,9 @@ ADMIN_ACTION_SQL = (
 SUBMISSION_ACTION_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0006_individual_submission_actions.sql"
 ).read_text(encoding="utf-8")
+ACCOUNT_DATA_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0007_account_submission_data.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -170,6 +173,20 @@ class SQLContractTests(unittest.TestCase):
             "grant execute on function public.delete_submission(uuid, text, text) to anon, authenticated",
             SUBMISSION_ACTION_SQL,
         )
+
+    def test_account_task_history_and_actions_are_user_scoped(self) -> None:
+        for name in (
+            "list_my_submissions",
+            "cancel_my_submission",
+            "retry_my_submission",
+            "delete_my_submission",
+        ):
+            self.assertIn(f"function public.{name}", ACCOUNT_DATA_SQL)
+        self.assertGreaterEqual(ACCOUNT_DATA_SQL.count("submission.user_id = owner_id"), 4)
+        self.assertEqual(ACCOUNT_DATA_SQL.count("raise exception 'login_required'"), 4)
+        self.assertNotIn("'raw_text'", ACCOUNT_DATA_SQL)
+        self.assertNotIn("'result_payload'", ACCOUNT_DATA_SQL)
+        self.assertIn("limit p_limit", ACCOUNT_DATA_SQL)
 
 
 if __name__ == "__main__":

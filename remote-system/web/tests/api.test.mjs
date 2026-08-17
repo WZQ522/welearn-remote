@@ -122,3 +122,32 @@ test("receipt operations use submission RPCs and send the session token", async 
     assert.equal("p_client_id" in request.body, false);
   }
 });
+
+test("account task operations require only the signed-in session and task id", async () => {
+  const requests = [];
+  const api = new SupabaseSubmissionApi({
+    supabaseUrl: "https://project.supabase.co",
+    supabaseAnonKey: "anon-key-value-that-is-public",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, body: JSON.parse(options.body) });
+      return { ok: true, status: 200, text: async () => "true" };
+    },
+  });
+  const sessionToken = "s".repeat(64);
+  await api.listMine(sessionToken);
+  await api.cancelMine("submission-1", sessionToken);
+  await api.retryMine("submission-1", sessionToken);
+  await api.removeMine("submission-1", sessionToken);
+
+  assert.deepEqual(requests.map(request => request.url.split("/").at(-1)), [
+    "list_my_submissions",
+    "cancel_my_submission",
+    "retry_my_submission",
+    "delete_my_submission",
+  ]);
+  assert.deepEqual(requests[0].body, { p_session_token: sessionToken, p_limit: 100 });
+  for (const request of requests.slice(1)) {
+    assert.deepEqual(request.body, { p_submission_id: "submission-1", p_session_token: sessionToken });
+    assert.equal("p_view_token" in request.body, false);
+  }
+});

@@ -52,6 +52,11 @@ test("every task card exposes independent cancel and delete actions", () => {
   assert.match(html, /class="danger-button delete-button"/);
 });
 
+test("task history is account-scoped instead of device-scoped", () => {
+  assert.doesNotMatch(html, /id="clearButton"/);
+  assert.match(html, /id="taskList"/);
+});
+
 test("design avoids gradients, decorative orbs, and viewport-scaled type", () => {
   assert.doesNotMatch(css, /gradient\s*\(/i);
   assert.doesNotMatch(`${html}\n${css}`, /\borb\b/i);

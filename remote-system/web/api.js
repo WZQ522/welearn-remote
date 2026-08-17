@@ -100,6 +100,34 @@ export class SupabaseSubmissionApi {
     });
   }
 
+  listMine(sessionToken, limit = 100) {
+    return this.rpc("list_my_submissions", {
+      p_session_token: sessionToken,
+      p_limit: limit,
+    });
+  }
+
+  cancelMine(submissionId, sessionToken) {
+    return this.rpc("cancel_my_submission", {
+      p_submission_id: submissionId,
+      p_session_token: sessionToken,
+    });
+  }
+
+  retryMine(submissionId, sessionToken) {
+    return this.rpc("retry_my_submission", {
+      p_submission_id: submissionId,
+      p_session_token: sessionToken,
+    });
+  }
+
+  removeMine(submissionId, sessionToken) {
+    return this.rpc("delete_my_submission", {
+      p_submission_id: submissionId,
+      p_session_token: sessionToken,
+    });
+  }
+
   cancel(submissionId, viewToken, sessionToken) {
     return this.rpc("cancel_submission", {
       p_submission_id: submissionId,
