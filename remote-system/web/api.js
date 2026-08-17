@@ -69,6 +69,20 @@ export class SupabaseSubmissionApi {
     });
   }
 
+  adminResetRemoteUserPassword(sessionToken, userId) {
+    return this.rpc("admin_reset_remote_user_password", {
+      p_session_token: sessionToken,
+      p_target_user_id: userId,
+    });
+  }
+
+  adminDeleteRemoteUser(sessionToken, userId) {
+    return this.rpc("admin_delete_remote_user", {
+      p_session_token: sessionToken,
+      p_target_user_id: userId,
+    });
+  }
+
   submit({ rawText, clientId, viewToken, sessionToken }) {
     return this.rpc("submit_submission", {
       p_raw_text: rawText,

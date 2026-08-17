@@ -14,6 +14,7 @@ Date: 2026-08-17
 - The mock processor reports `execution_status`, `task_total`, `task_completed`, `task_failed`, and `result_message` for the full claim, process, and upload path.
 - Task Scheduler scripts start and restart the Agent after Windows logon.
 - The admin console rotates today's unused invitation codes to a fixed set of 10, retains consumed-code history with the consuming account, and lists all registered accounts without password hashes.
+- Admins can reset ordinary-account passwords to `11111111` or delete ordinary accounts; admin accounts and the current admin session are protected.
 
 ## Test commands
 

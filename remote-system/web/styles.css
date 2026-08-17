@@ -74,6 +74,9 @@ input:focus { border-color: var(--green); box-shadow: 0 0 0 3px #d8eee6; }
 .admin-user-identity strong { font-size: 13px; overflow-wrap: anywhere; }
 .admin-user-identity span, .admin-user-activity span { color: var(--muted); font-size: 12px; }
 .admin-user-activity { justify-items: end; text-align: right; white-space: nowrap; }
+.admin-user-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: max-content; }
+.admin-action-button { min-height: 34px; padding: 0 9px; font-size: 12px; }
+.admin-protected-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .submit-band { background: var(--surface); border-left: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .tasks-band { padding-top: 24px; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
@@ -145,4 +148,6 @@ textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px #d8eee6; }
   .task-actions button { flex: 1; }
   .admin-code-row, .admin-user-row { align-items: flex-start; flex-direction: column; }
   .admin-code-details, .admin-user-activity { justify-items: start; text-align: left; white-space: normal; }
+  .admin-user-actions { width: 100%; justify-content: stretch; }
+  .admin-user-actions .admin-action-button { flex: 1; }
 }

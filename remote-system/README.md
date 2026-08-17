@@ -18,6 +18,7 @@ flowchart LR
 - `supabase/migrations/0002_daily_invitation_codes.sql`: optional Supabase `pg_cron` job that issues 10 new random invitation codes every day at 00:00 Asia/Shanghai.
 - `supabase/migrations/0003_admin_accounts.sql`: admin sessions, bootstrap RPC, and protected invitation management RPCs.
 - `supabase/migrations/0004_admin_console_and_invitation_rotation.sql`: replaces today's unused codes before issuing 10 fresh codes, retains used-code history, and adds the admin account-list RPC.
+- `supabase/migrations/0005_admin_user_actions.sql`: lets admins reset ordinary-account passwords to `11111111` or delete ordinary accounts, while protecting admin accounts.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -30,7 +31,7 @@ flowchart LR
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 
-The browser has no direct table permissions. A user must register with a current invitation code or log in. Registration atomically locks and consumes one unused code; a used or expired code cannot register a second account. The browser stores only a random session token and username in local storage, never the password or invitation code. Sessions expire after 30 days. The daily job and the admin `生成 10 个` button both keep 10 currently usable codes by removing only today's unused rows first; used rows remain as history with the consuming account and timestamp. The admin page also lists every registered username, role, registration time, and last login time without returning password hashes.
+The browser has no direct table permissions. A user must register with a current invitation code or log in. Registration atomically locks and consumes one unused code; a used or expired code cannot register a second account. The browser stores only a random session token and username in local storage, never the password or invitation code. Sessions expire after 30 days. The daily job and the admin `生成 10 个` button both keep 10 currently usable codes by removing only today's unused rows first; used rows remain as history with the consuming account and timestamp. The admin page also lists every registered username, role, registration time, and last login time without returning password hashes. Ordinary accounts can be reset to the default password or deleted from the admin page; admin accounts cannot be changed by these controls.
 
 The database stores only a SHA-256 digest of session and receipt tokens. Submission RPCs require both the session token and receipt token, and check the submission's `user_id` before returning or changing a task.
 

@@ -1,4 +1,4 @@
-import { randomToken, SupabaseSubmissionApi } from "./api.js?v=admin-console-v1";
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=admin-console-v2";
 
 const STORAGE_KEY = "unified-remote-submission-receipts-v2";
 const CLIENT_KEY = "unified-remote-client-id-v1";
@@ -124,6 +124,9 @@ function friendlyError(error) {
     ["invitation_code_expired", "邀请码已过期，请使用当天生成的邀请码"],
     ["invalid_credentials", "用户名或密码不正确"],
     ["admin_required", "需要管理员权限"],
+    ["admin_target_protected", "管理员账号受保护，不能操作"],
+    ["admin_self_protected", "不能删除当前登录的管理员账号"],
+    ["remote_user_not_found", "账号不存在或已被删除"],
     ["login_required", "登录状态已失效，请重新登录"],
   ];
   return messages.find(([code]) => message.includes(code))?.[1] || message;
@@ -260,8 +263,53 @@ function renderAdminUsers(users) {
     const lastLogin = document.createElement("span");
     lastLogin.textContent = item.last_login_at ? `最近登录 ${formatTime(item.last_login_at)}` : "尚未登录";
     activity.append(created, lastLogin);
-    row.append(identity, activity);
+    const actions = document.createElement("div");
+    actions.className = "admin-user-actions";
+    if (item.is_admin) {
+      const protectedLabel = document.createElement("span");
+      protectedLabel.className = "admin-protected-label";
+      protectedLabel.textContent = "管理员账号受保护";
+      actions.append(protectedLabel);
+    } else {
+      const resetButton = document.createElement("button");
+      resetButton.className = "secondary-button admin-action-button";
+      resetButton.type = "button";
+      resetButton.title = "重置密码为 11111111";
+      resetButton.innerHTML = '<i data-lucide="key-round"></i><span>重置密码</span>';
+      resetButton.addEventListener("click", () => resetRemoteUserPassword(item));
+      const deleteButton = document.createElement("button");
+      deleteButton.className = "danger-button admin-action-button";
+      deleteButton.type = "button";
+      deleteButton.title = "删除账号";
+      deleteButton.innerHTML = '<i data-lucide="trash-2"></i><span>删除账号</span>';
+      deleteButton.addEventListener("click", () => deleteRemoteUser(item));
+      actions.append(resetButton, deleteButton);
+    }
+    row.append(identity, activity, actions);
     elements.adminUserList.append(row);
+  }
+  window.lucide?.createIcons();
+}
+
+async function resetRemoteUserPassword(user) {
+  if (!auth || !confirm(`确定将账号 ${user.username} 的密码重置为 11111111 吗？该账号需要重新登录。`)) return;
+  elements.adminMessage.textContent = `正在重置 ${user.username} 的密码`;
+  try {
+    await api.adminResetRemoteUserPassword(auth.sessionToken, user.id);
+    await refreshAdminConsole({ successMessage: `${user.username} 的密码已重置为 11111111` });
+  } catch (error) {
+    elements.adminMessage.textContent = `重置失败：${friendlyError(error)}`;
+  }
+}
+
+async function deleteRemoteUser(user) {
+  if (!auth || !confirm(`确定删除账号 ${user.username} 吗？该账号的任务和登录会话也会被删除。`)) return;
+  elements.adminMessage.textContent = `正在删除 ${user.username}`;
+  try {
+    await api.adminDeleteRemoteUser(auth.sessionToken, user.id);
+    await refreshAdminConsole({ successMessage: `账号 ${user.username} 已删除` });
+  } catch (error) {
+    elements.adminMessage.textContent = `删除失败：${friendlyError(error)}`;
   }
 }
 

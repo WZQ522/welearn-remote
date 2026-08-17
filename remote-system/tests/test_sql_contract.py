@@ -14,6 +14,9 @@ ADMIN_SQL = (Path(__file__).resolve().parents[1] / "supabase/migrations/0003_adm
 ADMIN_CONSOLE_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0004_admin_console_and_invitation_rotation.sql"
 ).read_text(encoding="utf-8")
+ADMIN_ACTION_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0005_admin_user_actions.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -135,6 +138,24 @@ class SQLContractTests(unittest.TestCase):
         self.assertIn(
             "grant execute on function public.admin_list_remote_users(text) to anon, authenticated",
             function_sql,
+        )
+
+    def test_admin_user_actions_are_protected_and_reset_to_default_password(self) -> None:
+        for name in ("admin_reset_remote_user_password", "admin_delete_remote_user"):
+            self.assertIn(f"function public.{name}(text, uuid)", ADMIN_ACTION_SQL)
+            self.assertIn("current_remote_admin_id", ADMIN_ACTION_SQL)
+            self.assertIn("admin_target_protected", ADMIN_ACTION_SQL)
+        self.assertIn("extensions.crypt('11111111'", ADMIN_ACTION_SQL)
+        self.assertIn("delete from public.remote_sessions", ADMIN_ACTION_SQL)
+        self.assertIn("admin_self_protected", ADMIN_ACTION_SQL)
+        self.assertIn("delete from public.remote_users", ADMIN_ACTION_SQL)
+        self.assertIn(
+            "grant execute on function public.admin_reset_remote_user_password(text, uuid) to anon, authenticated",
+            ADMIN_ACTION_SQL,
+        )
+        self.assertIn(
+            "grant execute on function public.admin_delete_remote_user(text, uuid) to anon, authenticated",
+            ADMIN_ACTION_SQL,
         )
 
 
