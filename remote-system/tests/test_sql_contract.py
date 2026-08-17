@@ -26,6 +26,9 @@ ACCOUNT_DATA_SQL = (
 ACCOUNT_BATCH_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0008_account_task_batches.sql"
 ).read_text(encoding="utf-8")
+LIVE_PROGRESS_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0009_live_progress_claims.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -212,6 +215,17 @@ class SQLContractTests(unittest.TestCase):
         self.assertIn("default 1 check (batch_position > 0)", ACCOUNT_BATCH_SQL)
         self.assertIn("default 1 check (batch_size > 0)", ACCOUNT_BATCH_SQL)
         self.assertNotIn("insert into public.remote_submissions\nselect", ACCOUNT_BATCH_SQL)
+
+    def test_desktop_claim_excludes_submissions_already_active_in_the_same_process(self) -> None:
+        self.assertIn("function public.agent_update_submission_progress", LIVE_PROGRESS_SQL)
+        self.assertIn("task_completed = p_task_completed", LIVE_PROGRESS_SQL)
+        self.assertIn("heartbeat_at = now()", LIVE_PROGRESS_SQL)
+        self.assertIn("updated_at = now()", LIVE_PROGRESS_SQL)
+        self.assertIn("function public.claim_next_submission_excluding", LIVE_PROGRESS_SQL)
+        self.assertIn("p_excluded_submission_ids uuid[]", LIVE_PROGRESS_SQL)
+        self.assertIn("submission.id <> all", LIVE_PROGRESS_SQL)
+        self.assertIn("grant execute on function public.agent_update_submission_progress", LIVE_PROGRESS_SQL)
+        self.assertIn("grant execute on function public.claim_next_submission_excluding", LIVE_PROGRESS_SQL)
 
 
 if __name__ == "__main__":
