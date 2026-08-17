@@ -23,6 +23,9 @@ SUBMISSION_ACTION_SQL = (
 ACCOUNT_DATA_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0007_account_submission_data.sql"
 ).read_text(encoding="utf-8")
+ACCOUNT_BATCH_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0008_account_task_batches.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -187,6 +190,28 @@ class SQLContractTests(unittest.TestCase):
         self.assertNotIn("'raw_text'", ACCOUNT_DATA_SQL)
         self.assertNotIn("'result_payload'", ACCOUNT_DATA_SQL)
         self.assertIn("limit p_limit", ACCOUNT_DATA_SQL)
+
+    def test_new_batches_create_one_independently_controlled_row_per_account(self) -> None:
+        self.assertIn("function public.submit_account_batch", ACCOUNT_BATCH_SQL)
+        self.assertIn("regexp_split_to_table", ACCOUNT_BATCH_SQL)
+        self.assertIn("insert into public.remote_submissions", ACCOUNT_BATCH_SQL)
+        self.assertIn("created_batch_id", ACCOUNT_BATCH_SQL)
+        self.assertIn("entry.position", ACCOUNT_BATCH_SQL)
+        self.assertIn("calculated_line_count", ACCOUNT_BATCH_SQL)
+        self.assertIn("'batch_id', submission.batch_id", ACCOUNT_BATCH_SQL)
+        self.assertIn("'task_label', submission.task_label", ACCOUNT_BATCH_SQL)
+        self.assertNotIn("'raw_text', submission.raw_text", ACCOUNT_BATCH_SQL)
+        self.assertNotIn("'result_payload', submission.result_payload", ACCOUNT_BATCH_SQL)
+        self.assertIn(
+            "grant execute on function public.submit_account_batch(text, uuid, text, text) to anon, authenticated",
+            ACCOUNT_BATCH_SQL,
+        )
+
+    def test_legacy_rows_remain_single_unsplit_history_items(self) -> None:
+        self.assertIn("default extensions.gen_random_uuid()", ACCOUNT_BATCH_SQL)
+        self.assertIn("default 1 check (batch_position > 0)", ACCOUNT_BATCH_SQL)
+        self.assertIn("default 1 check (batch_size > 0)", ACCOUNT_BATCH_SQL)
+        self.assertNotIn("insert into public.remote_submissions\nselect", ACCOUNT_BATCH_SQL)
 
 
 if __name__ == "__main__":

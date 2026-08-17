@@ -21,6 +21,7 @@ flowchart LR
 - `supabase/migrations/0005_admin_user_actions.sql`: lets admins reset ordinary-account passwords to `11111111` or delete ordinary accounts, while protecting admin accounts.
 - `supabase/migrations/0006_individual_submission_actions.sql`: lets a signed-in user delete one owned submission, including an active submission that the Agent will stop on its next heartbeat.
 - `supabase/migrations/0007_account_submission_data.sql`: provides account-scoped task history and task actions so the same login sees the same data on every device.
+- `supabase/migrations/0008_account_task_batches.sql`: splits each new batch into independently controllable account tasks while preserving legacy batches as single history items.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -29,13 +30,17 @@ flowchart LR
 ## 1. Supabase
 
 1. Create a Supabase Free project.
-2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0007_account_submission_data.sql` in numeric order in the Supabase SQL Editor.
+2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0008_account_task_batches.sql` in numeric order in the Supabase SQL Editor.
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 
 The browser has no direct table permissions. A user must register with a current invitation code or log in. Registration atomically locks and consumes one unused code; a used or expired code cannot register a second account. The browser stores only a random session token and username in local storage, never the password or invitation code. Sessions expire after 30 days. The daily job and the admin `生成 10 个` button both keep 10 currently usable codes by removing only today's unused rows first; used rows remain as history with the consuming account and timestamp. The admin page also lists every registered username, role, registration time, and last login time without returning password hashes. Ordinary accounts can be reset to the default password or deleted from the admin page; admin accounts cannot be changed by these controls.
 
 The database stores only a SHA-256 digest of session and receipt tokens. Submission RPCs require both the session token and receipt token, and check the submission's `user_id` before returning or changing a task.
+
+Task history belongs to the signed-in website account and is stored in Supabase PostgreSQL, so the same account sees it from mobile and desktop browsers. Each non-empty line in a new batch is a separate database row with its own status, retry, cancel, delete, progress, and result fields. The browser keeps only the session token, username, admin flag, and a random client ID in `localStorage`; it does not use device-local task receipts as history. The Agent separately keeps each attempt's `input.json`, `result.json`, `stdout.log`, and `stderr.log` under `AGENT_WORK_DIR` (default `agent/work`) on the computer. No automatic retention cleanup is configured yet.
+
+The submitted `raw_text` is required by the desktop processor contract and is stored in Supabase for each account task. It can contain the submitted platform credential, while the account list RPC deliberately omits `raw_text` and `result_payload` from browser responses.
 
 To issue codes manually, use the SQL Editor or service-role administration path:
 

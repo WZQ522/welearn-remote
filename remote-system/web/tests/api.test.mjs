@@ -34,6 +34,34 @@ test("web API uses only the anon key and expected RPC body", async () => {
   });
 });
 
+test("batch submission splits account lines through the batch RPC", async () => {
+  let request;
+  const api = new SupabaseSubmissionApi({
+    supabaseUrl: "https://project.supabase.co",
+    supabaseAnonKey: "anon-key-value-that-is-public",
+    fetchImpl: async (url, options) => {
+      request = { url, body: JSON.parse(options.body) };
+      return { ok: true, status: 200, text: async () => JSON.stringify({ batch_id: "batch-1", line_count: 2 }) };
+    },
+  });
+  const rawText = "u校园 first password\nwelearn second password";
+  const result = await api.submitBatch({
+    rawText,
+    clientId: "00000000-0000-0000-0000-000000000001",
+    viewToken: "v".repeat(64),
+    sessionToken: "s".repeat(64),
+  });
+
+  assert.equal(result.line_count, 2);
+  assert.equal(request.url, "https://project.supabase.co/rest/v1/rpc/submit_account_batch");
+  assert.deepEqual(request.body, {
+    p_raw_text: rawText,
+    p_client_id: "00000000-0000-0000-0000-000000000001",
+    p_view_token: "v".repeat(64),
+    p_session_token: "s".repeat(64),
+  });
+});
+
 test("auth operations use dedicated RPCs and send no browser secret", async () => {
   const requests = [];
   const api = new SupabaseSubmissionApi({
@@ -145,7 +173,7 @@ test("account task operations require only the signed-in session and task id", a
     "retry_my_submission",
     "delete_my_submission",
   ]);
-  assert.deepEqual(requests[0].body, { p_session_token: sessionToken, p_limit: 100 });
+  assert.deepEqual(requests[0].body, { p_session_token: sessionToken, p_limit: 5000 });
   for (const request of requests.slice(1)) {
     assert.deepEqual(request.body, { p_submission_id: "submission-1", p_session_token: sessionToken });
     assert.equal("p_view_token" in request.body, false);

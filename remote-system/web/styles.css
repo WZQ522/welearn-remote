@@ -103,6 +103,17 @@ textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px #d8eee6; }
 .danger-button { border: 1px solid #cfabab; background: #fff; color: var(--red); }
 
 .task-list { display: grid; gap: 12px; }
+.batch-group { padding: 4px 0 20px; border-bottom: 1px solid #cdd6d1; }
+.batch-group:last-child { padding-bottom: 0; border-bottom: 0; }
+.batch-header { min-height: 48px; margin-bottom: 10px; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.batch-header h3 { margin: 0; color: #24352e; font-size: 15px; }
+.batch-header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.batch-status-badge { padding: 4px 7px; border-radius: 4px; background: #e9eeeb; color: #4c5d55; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.batch-group[data-status="processing"] .batch-status-badge { background: #fff0d5; color: #845212; }
+.batch-group[data-status="completed"] .batch-status-badge { background: #d9eee5; color: var(--green-dark); }
+.batch-group[data-status="warning"] .batch-status-badge { background: #fff0d5; color: #845212; }
+.batch-group[data-status="failed"] .batch-status-badge { background: #f6dfdf; color: #823333; }
+.batch-task-list { display: grid; gap: 9px; }
 .task-card { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid #96a29d; border-radius: 6px; padding: 16px; }
 .task-card[data-status="processing"] { border-left-color: var(--amber); }
 .task-card[data-status="completed"] { border-left-color: var(--green); }
@@ -144,6 +155,7 @@ textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px #d8eee6; }
   .primary-button { width: 100%; }
   .task-card header { align-items: flex-start; }
   .task-card footer { align-items: stretch; flex-direction: column; }
+  .batch-header { align-items: flex-start; }
   .task-actions { width: 100%; }
   .task-actions button { flex: 1; }
   .admin-code-row, .admin-user-row { align-items: flex-start; flex-direction: column; }

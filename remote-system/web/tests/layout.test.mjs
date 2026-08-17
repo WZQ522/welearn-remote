@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = await readFile(path.join(root, "index.html"), "utf8");
 const css = await readFile(path.join(root, "styles.css"), "utf8");
+const app = await readFile(path.join(root, "app.js"), "utf8");
 
 test("mobile breakpoint keeps the batch form and actions readable", () => {
   assert.match(css, /@media \(max-width: 700px\)/);
@@ -50,11 +51,18 @@ test("submission form uses the original batch text contract", () => {
 test("every task card exposes independent cancel and delete actions", () => {
   assert.match(html, /class="danger-button cancel-button"/);
   assert.match(html, /class="danger-button delete-button"/);
+  assert.match(app, /api\.cancelMine\(submission\.id/);
+  assert.match(app, /api\.retryMine\(submission\.id/);
+  assert.match(app, /api\.removeMine\(submission\.id/);
 });
 
 test("task history is account-scoped instead of device-scoped", () => {
   assert.doesNotMatch(html, /id="clearButton"/);
   assert.match(html, /id="taskList"/);
+  assert.match(html, /当前账户/);
+  assert.match(app, /groupSubmissions\(submissions\)/);
+  assert.match(app, /className = "batch-task-list"/);
+  assert.match(app, /api\.submitBatch\(/);
 });
 
 test("design avoids gradients, decorative orbs, and viewport-scaled type", () => {

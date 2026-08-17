@@ -92,6 +92,15 @@ export class SupabaseSubmissionApi {
     });
   }
 
+  submitBatch({ rawText, clientId, viewToken, sessionToken }) {
+    return this.rpc("submit_account_batch", {
+      p_raw_text: rawText,
+      p_client_id: clientId,
+      p_view_token: viewToken,
+      p_session_token: sessionToken,
+    });
+  }
+
   get(submissionId, viewToken, sessionToken) {
     return this.rpc("get_submission", {
       p_submission_id: submissionId,
@@ -100,7 +109,7 @@ export class SupabaseSubmissionApi {
     });
   }
 
-  listMine(sessionToken, limit = 100) {
+  listMine(sessionToken, limit = 5000) {
     return this.rpc("list_my_submissions", {
       p_session_token: sessionToken,
       p_limit: limit,

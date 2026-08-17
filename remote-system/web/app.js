@@ -1,4 +1,5 @@
-import { randomToken, SupabaseSubmissionApi } from "./api.js?v=account-data-v1";
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=account-tasks-v1";
+import { batchStatus, groupSubmissions } from "./task-model.js?v=account-tasks-v1";
 
 const CLIENT_KEY = "unified-remote-client-id-v1";
 const AUTH_KEY = "unified-remote-auth-v1";
@@ -312,44 +313,86 @@ function syncAuthViewFromLocation() {
   if (!auth) showAuthView(window.location.hash === "#register" ? "register" : "login");
 }
 
-function render() {
-  const submissions = [...submissionState.values()].sort(
-    (left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0),
+function renderTask(submission) {
+  const status = statusInfo(submission);
+  const progress = progressInfo(submission);
+  const card = elements.template.content.firstElementChild.cloneNode(true);
+  card.dataset.status = status.tone;
+
+  const position = Number(submission.batch_position || 1);
+  const batchSize = Number(submission.batch_size || 1);
+  const defaultLabel = batchSize > 1 ? `账号任务 ${position}` : `账号任务`;
+  card.querySelector(".task-title").textContent = submission.task_label || defaultLabel;
+  card.querySelector(".task-time").textContent = batchSize > 1
+    ? `第 ${position} / ${batchSize} 项`
+    : formatTime(submission.created_at);
+  card.querySelector(".status-badge").textContent = status.label;
+  card.querySelector(".progress-count").textContent = `进度 ${progress.settled} / ${progress.total}`;
+  card.querySelector(".progress-percent").textContent = `${progress.percent}%`;
+  card.querySelector(".progress-track").value = progress.percent;
+  card.querySelector(".completed-count").textContent = `完成 ${progress.completed}`;
+  card.querySelector(".failed-count").textContent = `失败 ${progress.failed}`;
+  card.querySelector(".task-message").textContent = messageFor(submission);
+  card.querySelector(".attempt-count").textContent = `执行次数 ${submission.attempt_count || 0}`;
+
+  const cancel = card.querySelector(".cancel-button");
+  cancel.hidden = !["pending", "processing"].includes(submission.status) || submission.cancel_requested;
+  cancel.addEventListener("click", () => cancelSubmission(submission));
+
+  const remove = card.querySelector(".delete-button");
+  remove.addEventListener("click", () => deleteSubmission(submission));
+
+  const retry = card.querySelector(".retry-button");
+  retry.hidden = !(
+    ["failed", "canceled"].includes(submission.status)
+    || ["needs_action", "partial", "failed"].includes(submission.execution_status)
   );
+  retry.addEventListener("click", () => retrySubmission(submission));
+  return card;
+}
+
+function batchSummary(items) {
+  const total = items.length;
+  const finished = items.filter(item => !["pending", "processing"].includes(item.status)).length;
+  const failed = items.filter(item => item.status === "failed" || item.execution_status === "failed").length;
+  const canceled = items.filter(item => item.status === "canceled").length;
+  const parts = [`已结束 ${finished} / ${total}`];
+  if (failed) parts.push(`失败 ${failed}`);
+  if (canceled) parts.push(`取消 ${canceled}`);
+  return parts.join(" · ");
+}
+
+function render() {
+  const submissions = [...submissionState.values()];
+  const groups = groupSubmissions(submissions);
   elements.list.replaceChildren();
-  elements.count.textContent = `${submissions.length} 批`;
-  elements.empty.hidden = submissions.length > 0;
+  elements.count.textContent = `${groups.length} 批 · ${submissions.length} 个账号`;
+  elements.empty.hidden = groups.length > 0;
 
-  for (const submission of submissions) {
-    const status = statusInfo(submission);
-    const progress = progressInfo(submission);
-    const card = elements.template.content.firstElementChild.cloneNode(true);
-    card.dataset.status = status.tone;
-    card.querySelector(".task-title").textContent = `批量任务 · ${submission.line_count || 0} 条账号`;
-    card.querySelector(".task-time").textContent = formatTime(submission.created_at);
-    card.querySelector(".status-badge").textContent = status.label;
-    card.querySelector(".progress-count").textContent = `进度 ${progress.settled} / ${progress.total}`;
-    card.querySelector(".progress-percent").textContent = `${progress.percent}%`;
-    card.querySelector(".progress-track").value = progress.percent;
-    card.querySelector(".completed-count").textContent = `完成 ${progress.completed}`;
-    card.querySelector(".failed-count").textContent = `失败 ${progress.failed}`;
-    card.querySelector(".task-message").textContent = messageFor(submission);
-    card.querySelector(".attempt-count").textContent = `执行次数 ${submission.attempt_count || 0}`;
+  for (const [index, group] of groups.entries()) {
+    const status = batchStatus(group.items);
+    const section = document.createElement("section");
+    section.className = "batch-group";
+    section.dataset.status = status.tone;
 
-    const cancel = card.querySelector(".cancel-button");
-    cancel.hidden = !["pending", "processing"].includes(submission.status) || submission.cancel_requested;
-    cancel.addEventListener("click", () => cancelSubmission(submission));
+    const header = document.createElement("header");
+    header.className = "batch-header";
+    const identity = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = `批次 ${groups.length - index} · ${group.items.length} 个账号`;
+    const details = document.createElement("p");
+    details.textContent = `${formatTime(group.createdAt)} · ${batchSummary(group.items)}`;
+    identity.append(title, details);
+    const badge = document.createElement("span");
+    badge.className = "batch-status-badge";
+    badge.textContent = status.label;
+    header.append(identity, badge);
 
-    const remove = card.querySelector(".delete-button");
-    remove.addEventListener("click", () => deleteSubmission(submission));
-
-    const retry = card.querySelector(".retry-button");
-    retry.hidden = !(
-      ["failed", "canceled"].includes(submission.status)
-      || ["needs_action", "partial", "failed"].includes(submission.execution_status)
-    );
-    retry.addEventListener("click", () => retrySubmission(submission));
-    elements.list.append(card);
+    const taskList = document.createElement("div");
+    taskList.className = "batch-task-list";
+    for (const submission of group.items) taskList.append(renderTask(submission));
+    section.append(header, taskList);
+    elements.list.append(section);
   }
   window.lucide?.createIcons();
 }
@@ -542,7 +585,7 @@ elements.form.addEventListener("submit", async event => {
   const viewToken = randomToken();
   elements.submit.disabled = true;
   try {
-    const created = await api.submit({
+    const created = await api.submitBatch({
       rawText,
       clientId: clientId(),
       viewToken,
