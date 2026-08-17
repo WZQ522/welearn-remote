@@ -47,6 +47,11 @@ test("submission form uses the original batch text contract", () => {
   assert.ok(html.indexOf("class=\"format-note\"") < html.indexOf("id=\"rawText\""));
 });
 
+test("every task card exposes independent cancel and delete actions", () => {
+  assert.match(html, /class="danger-button cancel-button"/);
+  assert.match(html, /class="danger-button delete-button"/);
+});
+
 test("design avoids gradients, decorative orbs, and viewport-scaled type", () => {
   assert.doesNotMatch(css, /gradient\s*\(/i);
   assert.doesNotMatch(`${html}\n${css}`, /\borb\b/i);

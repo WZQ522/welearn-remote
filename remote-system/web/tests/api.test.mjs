@@ -107,10 +107,11 @@ test("receipt operations use submission RPCs and send the session token", async 
   await api.cancel("submission-1", token, sessionToken);
   await api.retry("submission-1", token, sessionToken);
   await api.clear("submission-1", token, sessionToken);
+  await api.remove("submission-1", token, sessionToken);
 
   assert.deepEqual(
     requests.map(request => request.url.split("/").at(-1)),
-    ["get_submission", "cancel_submission", "retry_submission", "clear_submission"],
+    ["get_submission", "cancel_submission", "retry_submission", "clear_submission", "delete_submission"],
   );
   for (const request of requests) {
     assert.deepEqual(request.body, {

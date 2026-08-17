@@ -98,6 +98,12 @@ function saveReceipt(receipt) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts.slice(0, 50)));
 }
 
+function removeReceipt(receiptId) {
+  const receipts = loadStoredReceipts().filter(item => item.id !== receiptId);
+  if (receipts.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts));
+  else localStorage.removeItem(STORAGE_KEY);
+}
+
 function clearCurrentReceipts() {
   const receipts = loadStoredReceipts().filter(item => item.username !== auth?.username);
   if (receipts.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts));
@@ -380,6 +386,9 @@ function render() {
     cancel.hidden = !["pending", "processing"].includes(submission.status) || submission.cancel_requested;
     cancel.addEventListener("click", () => cancelSubmission(receipt));
 
+    const remove = card.querySelector(".delete-button");
+    remove.addEventListener("click", () => deleteSubmission(receipt, submission));
+
     const retry = card.querySelector(".retry-button");
     retry.hidden = !(
       ["failed", "canceled"].includes(submission.status)
@@ -419,12 +428,33 @@ function scheduleRefresh() {
 }
 
 async function cancelSubmission(receipt) {
-  if (!auth) return;
+  if (!auth || !confirm("只取消这一条任务吗？其他任务会继续执行。")) return;
   try {
     await api.cancel(receipt.id, receipt.viewToken, auth.sessionToken);
     await refreshSubmissions({ quiet: true });
   } catch (error) {
     elements.message.textContent = `取消失败：${friendlyError(error)}`;
+  }
+}
+
+async function deleteSubmission(receipt, submission) {
+  if (!auth) return;
+  const active = ["pending", "processing"].includes(submission.status);
+  const prompt = active
+    ? "删除这一条任务吗？电脑端将在下一次状态检查时停止这项任务，其他任务不受影响。"
+    : "永久删除这一条任务记录吗？其他任务不受影响。";
+  if (!confirm(prompt)) return;
+
+  try {
+    const deleted = await api.remove(receipt.id, receipt.viewToken, auth.sessionToken);
+    if (deleted !== true) throw new Error("任务不存在或已经删除");
+    removeReceipt(receipt.id);
+    submissionState.delete(receipt.id);
+    elements.message.textContent = "已删除 1 条任务";
+    render();
+    scheduleRefresh();
+  } catch (error) {
+    elements.message.textContent = `删除失败：${friendlyError(error)}`;
   }
 }
 

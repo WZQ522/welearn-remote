@@ -17,6 +17,9 @@ ADMIN_CONSOLE_SQL = (
 ADMIN_ACTION_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0005_admin_user_actions.sql"
 ).read_text(encoding="utf-8")
+SUBMISSION_ACTION_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0006_individual_submission_actions.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -156,6 +159,16 @@ class SQLContractTests(unittest.TestCase):
         self.assertIn(
             "grant execute on function public.admin_delete_remote_user(text, uuid) to anon, authenticated",
             ADMIN_ACTION_SQL,
+        )
+
+    def test_user_can_delete_only_one_owned_submission(self) -> None:
+        self.assertIn("function public.delete_submission", SUBMISSION_ACTION_SQL)
+        self.assertIn("submission.id = p_submission_id", SUBMISSION_ACTION_SQL)
+        self.assertIn("submission.user_id = public.current_remote_user_id(p_session_token)", SUBMISSION_ACTION_SQL)
+        self.assertIn("submission.view_token_hash = public.hash_submission_view_token(p_view_token)", SUBMISSION_ACTION_SQL)
+        self.assertIn(
+            "grant execute on function public.delete_submission(uuid, text, text) to anon, authenticated",
+            SUBMISSION_ACTION_SQL,
         )
 
 

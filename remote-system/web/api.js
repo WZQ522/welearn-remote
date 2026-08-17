@@ -124,6 +124,14 @@ export class SupabaseSubmissionApi {
     });
   }
 
+  remove(submissionId, viewToken, sessionToken) {
+    return this.rpc("delete_submission", {
+      p_submission_id: submissionId,
+      p_view_token: viewToken,
+      p_session_token: sessionToken,
+    });
+  }
+
   async rpc(name, body) {
     const response = await this.fetchImpl(`${this.origin}/rest/v1/rpc/${name}`, {
       method: "POST",
