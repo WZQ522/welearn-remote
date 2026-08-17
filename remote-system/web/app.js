@@ -1,4 +1,4 @@
-import { randomToken, SupabaseSubmissionApi } from "./api.js?v=e89ee5c";
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=admin-console-v1";
 
 const STORAGE_KEY = "unified-remote-submission-receipts-v2";
 const CLIENT_KEY = "unified-remote-client-id-v1";
@@ -24,6 +24,10 @@ const elements = {
   adminBand: document.querySelector("#adminBand"),
   issueInvitationButton: document.querySelector("#issueInvitationButton"),
   adminCodeList: document.querySelector("#adminCodeList"),
+  adminAvailableCount: document.querySelector("#adminAvailableCount"),
+  adminUsedCount: document.querySelector("#adminUsedCount"),
+  adminUserCount: document.querySelector("#adminUserCount"),
+  adminUserList: document.querySelector("#adminUserList"),
   adminMessage: document.querySelector("#adminMessage"),
   userSession: document.querySelector("#userSession"),
   loggedUsername: document.querySelector("#loggedUsername"),
@@ -203,6 +207,10 @@ function updateAuthUI() {
 
 function renderAdminCodes(codes) {
   elements.adminCodeList.replaceChildren();
+  const availableCount = codes.filter(item => !item.used_at).length;
+  const usedCount = codes.length - availableCount;
+  elements.adminAvailableCount.textContent = `可用邀请码 ${availableCount}`;
+  elements.adminUsedCount.textContent = `今日已使用 ${usedCount}`;
   if (!codes.length) {
     elements.adminCodeList.textContent = "今天还没有邀请码";
     return;
@@ -212,21 +220,74 @@ function renderAdminCodes(codes) {
     row.className = `admin-code-row${item.used_at ? " used" : ""}`;
     const code = document.createElement("code");
     code.textContent = item.code;
-    const state = document.createElement("span");
+    const details = document.createElement("div");
+    details.className = "admin-code-details";
+    const state = document.createElement("strong");
+    state.className = `admin-state ${item.used_at ? "used" : "available"}`;
     state.textContent = item.used_at ? "已使用" : "未使用";
-    row.append(code, state);
+    details.append(state);
+    if (item.used_at) {
+      const usage = document.createElement("span");
+      usage.textContent = `${item.used_username || "账号已删除"} · ${formatTime(item.used_at)}`;
+      details.append(usage);
+    }
+    row.append(code, details);
     elements.adminCodeList.append(row);
   }
 }
 
-async function refreshAdminCodes() {
-  if (!api || !auth?.isAdmin) return;
-  try {
-    const codes = await api.adminListInvitationCodes(auth.sessionToken);
-    renderAdminCodes(Array.isArray(codes) ? codes : []);
-  } catch (error) {
-    elements.adminMessage.textContent = `读取邀请码失败：${friendlyError(error)}`;
+function renderAdminUsers(users) {
+  elements.adminUserList.replaceChildren();
+  elements.adminUserCount.textContent = `注册账号 ${users.length}`;
+  if (!users.length) {
+    elements.adminUserList.textContent = "还没有注册账号";
+    return;
   }
+  for (const item of users) {
+    const row = document.createElement("div");
+    row.className = "admin-user-row";
+    const identity = document.createElement("div");
+    identity.className = "admin-user-identity";
+    const username = document.createElement("strong");
+    username.textContent = item.username;
+    const role = document.createElement("span");
+    role.textContent = item.is_admin ? "管理员" : "普通账号";
+    identity.append(username, role);
+    const activity = document.createElement("div");
+    activity.className = "admin-user-activity";
+    const created = document.createElement("span");
+    created.textContent = `注册 ${formatTime(item.created_at)}`;
+    const lastLogin = document.createElement("span");
+    lastLogin.textContent = item.last_login_at ? `最近登录 ${formatTime(item.last_login_at)}` : "尚未登录";
+    activity.append(created, lastLogin);
+    row.append(identity, activity);
+    elements.adminUserList.append(row);
+  }
+}
+
+async function refreshAdminConsole({ successMessage = "" } = {}) {
+  if (!api || !auth?.isAdmin) return;
+  const activeSession = auth.sessionToken;
+  const [codesResult, usersResult] = await Promise.allSettled([
+    api.adminListInvitationCodes(activeSession),
+    api.adminListRemoteUsers(activeSession),
+  ]);
+  if (auth?.sessionToken !== activeSession) return;
+
+  const errors = [];
+  if (codesResult.status === "fulfilled") {
+    renderAdminCodes(Array.isArray(codesResult.value) ? codesResult.value : []);
+  } else {
+    errors.push(`邀请码：${friendlyError(codesResult.reason)}`);
+  }
+  if (usersResult.status === "fulfilled") {
+    renderAdminUsers(Array.isArray(usersResult.value) ? usersResult.value : []);
+  } else {
+    errors.push(`注册账号：${friendlyError(usersResult.reason)}`);
+  }
+  elements.adminMessage.textContent = errors.length
+    ? `读取失败：${errors.join("；")}`
+    : successMessage;
 }
 
 function syncAuthViewFromLocation() {
@@ -358,7 +419,7 @@ elements.loginForm.addEventListener("submit", async event => {
     elements.authMessage.textContent = "登录成功";
     render();
     await refreshSubmissions({ quiet: true });
-    await refreshAdminCodes();
+    await refreshAdminConsole();
   } catch (error) {
     elements.authMessage.textContent = `登录失败：${friendlyError(error)}`;
   } finally {
@@ -404,6 +465,7 @@ elements.logoutButton.addEventListener("click", async () => {
     elements.authMessage.textContent = "已退出登录";
     elements.adminMessage.textContent = "";
     renderAdminCodes([]);
+    renderAdminUsers([]);
     render();
     elements.logoutButton.disabled = false;
   }
@@ -415,8 +477,7 @@ elements.issueInvitationButton.addEventListener("click", async () => {
   elements.adminMessage.textContent = "正在生成邀请码";
   try {
     await api.adminIssueInvitationCodes(auth.sessionToken, 10);
-    elements.adminMessage.textContent = "已生成 10 个当天邀请码";
-    await refreshAdminCodes();
+    await refreshAdminConsole({ successMessage: "已刷新 10 个当天可用邀请码，已使用记录已保留" });
   } catch (error) {
     elements.adminMessage.textContent = `生成失败：${friendlyError(error)}`;
   } finally {
@@ -493,7 +554,10 @@ elements.clear.addEventListener("click", async () => {
   }
 });
 
-elements.refresh.addEventListener("click", () => refreshSubmissions());
+elements.refresh.addEventListener("click", () => {
+  refreshSubmissions();
+  refreshAdminConsole();
+});
 
 try {
   api = new SupabaseSubmissionApi(window.REMOTE_TASK_CONFIG || {});
@@ -501,7 +565,7 @@ try {
   updateAuthUI();
   render();
   refreshSubmissions({ quiet: true });
-  refreshAdminCodes();
+  refreshAdminConsole();
 } catch (error) {
   elements.connection.textContent = "云端尚未配置";
   elements.message.textContent = friendlyError(error);

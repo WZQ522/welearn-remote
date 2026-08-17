@@ -11,6 +11,9 @@ CRON_SQL = (Path(__file__).resolve().parents[1] / "supabase/migrations/0002_dail
 ADMIN_SQL = (Path(__file__).resolve().parents[1] / "supabase/migrations/0003_admin_accounts.sql").read_text(
     encoding="utf-8"
 )
+ADMIN_CONSOLE_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0004_admin_console_and_invitation_rotation.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -111,6 +114,28 @@ class SQLContractTests(unittest.TestCase):
 
     def test_admin_migration_accepts_email_style_usernames(self) -> None:
         self.assertIn("^[a-z0-9][a-z0-9_.@-]{2,63}$", ADMIN_SQL)
+
+    def test_invitation_rotation_replaces_only_unused_codes_for_today(self) -> None:
+        self.assertIn("delete from public.invitation_codes", ADMIN_CONSOLE_SQL)
+        self.assertIn("where issue_date = current_issue_date", ADMIN_CONSOLE_SQL)
+        self.assertIn("and used_at is null", ADMIN_CONSOLE_SQL)
+        self.assertIn("perform public.issue_invitation_codes(10)", ADMIN_CONSOLE_SQL)
+
+    def test_admin_invitation_list_includes_usage_account_details(self) -> None:
+        self.assertIn("'used_by', invitation.used_by", ADMIN_CONSOLE_SQL)
+        self.assertIn("'used_username', user_record.username", ADMIN_CONSOLE_SQL)
+        self.assertIn("left join public.remote_users", ADMIN_CONSOLE_SQL)
+
+    def test_admin_can_list_accounts_without_password_data(self) -> None:
+        function_sql = ADMIN_CONSOLE_SQL.split("function public.admin_list_remote_users", 1)[1]
+        self.assertIn("current_remote_admin_id", function_sql)
+        self.assertIn("'username', user_record.username", function_sql)
+        self.assertIn("'last_login_at', user_record.last_login_at", function_sql)
+        self.assertNotIn("password_hash", function_sql)
+        self.assertIn(
+            "grant execute on function public.admin_list_remote_users(text) to anon, authenticated",
+            function_sql,
+        )
 
 
 if __name__ == "__main__":

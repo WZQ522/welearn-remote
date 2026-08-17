@@ -63,6 +63,12 @@ export class SupabaseSubmissionApi {
     });
   }
 
+  adminListRemoteUsers(sessionToken) {
+    return this.rpc("admin_list_remote_users", {
+      p_session_token: sessionToken,
+    });
+  }
+
   submit({ rawText, clientId, viewToken, sessionToken }) {
     return this.rpc("submit_submission", {
       p_raw_text: rawText,

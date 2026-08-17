@@ -73,13 +73,16 @@ test("admin operations use the authenticated session token", async () => {
   });
   await api.adminIssueInvitationCodes("s".repeat(64), 10);
   await api.adminListInvitationCodes("s".repeat(64));
+  await api.adminListRemoteUsers("s".repeat(64));
 
   assert.deepEqual(requests.map(request => request.url.split("/").at(-1)), [
     "admin_issue_invitation_codes",
     "admin_list_invitation_codes",
+    "admin_list_remote_users",
   ]);
   assert.deepEqual(requests[0].body, { p_session_token: "s".repeat(64), p_count: 10 });
   assert.deepEqual(requests[1].body, { p_session_token: "s".repeat(64), p_issue_date: null });
+  assert.deepEqual(requests[2].body, { p_session_token: "s".repeat(64) });
 });
 
 test("receipt operations use submission RPCs and send the session token", async () => {

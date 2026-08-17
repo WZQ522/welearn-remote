@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="styles.css">
   <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=e89ee5c"></script>
+  <script type="module" src="app.js?v=admin-console-v1"></script>
 </head>
 <body>
   <header class="app-bar">
@@ -79,13 +79,25 @@
       <div class="section-heading">
         <div>
           <p class="eyebrow">管理员</p>
-          <h2 id="adminTitle">邀请码管理</h2>
+          <h2 id="adminTitle">管理后台</h2>
         </div>
         <button id="issueInvitationButton" class="secondary-button" type="button">
           <i data-lucide="key-round"></i><span>生成 10 个</span>
         </button>
       </div>
-      <div id="adminCodeList" class="admin-code-list" aria-live="polite"></div>
+      <div class="admin-summary" aria-label="邀请码和账号统计">
+        <span id="adminAvailableCount">可用邀请码 0</span>
+        <span id="adminUsedCount">今日已使用 0</span>
+        <span id="adminUserCount">注册账号 0</span>
+      </div>
+      <div class="admin-group">
+        <h3>今日邀请码</h3>
+        <div id="adminCodeList" class="admin-code-list" aria-live="polite"></div>
+      </div>
+      <div class="admin-group">
+        <h3>注册账号</h3>
+        <div id="adminUserList" class="admin-user-list" aria-live="polite"></div>
+      </div>
       <p id="adminMessage" class="auth-message" role="status"></p>
     </section>
 

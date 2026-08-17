@@ -32,6 +32,14 @@ test("account access requires a username, password, and invitation code", () => 
   assert.match(html, /id="submitButton"[^>]*disabled/);
 });
 
+test("admin console exposes invitation status and registered accounts", () => {
+  assert.match(html, /id="adminCodeList"/);
+  assert.match(html, /id="adminAvailableCount"/);
+  assert.match(html, /id="adminUsedCount"/);
+  assert.match(html, /id="adminUserList"/);
+  assert.match(html, /id="adminUserCount"/);
+});
+
 test("submission form uses the original batch text contract", () => {
   assert.match(html, /id="rawText"/);
   assert.match(html, /平台 账号 密码/);
