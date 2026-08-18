@@ -24,6 +24,9 @@ flowchart LR
 - `supabase/migrations/0008_account_task_batches.sql`: splits each new batch into independently controllable account tasks while preserving legacy batches as single history items.
 - `supabase/migrations/0009_live_progress_claims.sql`: prevents the desktop client from reclaiming its own active submissions and keeps execution-attempt counts accurate.
 - `supabase/migrations/0010_remote_score_summaries.sql`: returns the authenticated user's structured score summaries so each website batch can show real account and scored-item distributions.
+- `supabase/migrations/0011_score_summary_projection.sql`: replaces the full result-payload response with a score-only projection for the mobile console.
+- `supabase/migrations/0012_receipt_score_summary_projection.sql`: applies the same score-only projection to the legacy receipt-token status endpoint.
+- `supabase/migrations/0013_auth_rate_limits.sql`: adds database-side limits for repeated login and invitation attempts.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -32,7 +35,7 @@ flowchart LR
 ## 1. Supabase
 
 1. Create a Supabase Free project.
-2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0010_remote_score_summaries.sql` in numeric order in the Supabase SQL Editor.
+2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0013_auth_rate_limits.sql` in numeric order in the Supabase SQL Editor.
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 
@@ -58,6 +61,8 @@ order by created_at;
 `issue_invitation_codes` is not executable by `anon` or `authenticated`. The daily job runs at `16:00 UTC`, which is `00:00 Asia/Shanghai`.
 
 For a simpler desktop workflow, double-click the Mac launcher or the Windows batch file. On first macOS use, two dialogs ask for the Supabase Project URL and service-role key, then save them to the Agent's local ignored `.env`; later runs go straight to code generation. On Windows, fill the local `.env` first. Both launchers print 10 fresh codes by default; use `--count 20` for another quantity. The service-role key stays on the computer and is never shipped to the mobile page.
+
+Network exposure and IP boundaries are documented in `docs/network-security.md`. The static site and Agent do not require an inbound port on the computer; the public Supabase API hostname may remain visible in browser network tools, while the home computer's IP stays out of public DNS.
 
 Each non-empty input line uses the existing desktop format:
 

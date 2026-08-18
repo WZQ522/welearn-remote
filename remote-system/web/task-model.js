@@ -85,7 +85,7 @@ function isFinished(submission) {
 }
 
 function submissionScoreSummary(submission) {
-  const value = submission?.result_payload?.score_summary;
+  const value = submission?.score_summary ?? submission?.result_payload?.score_summary;
   if (!value || typeof value !== "object") return null;
   const scoredAccountCount = nonNegativeInteger(value.scored_account_count);
   const unscoredAccountCount = nonNegativeInteger(value.unscored_account_count);

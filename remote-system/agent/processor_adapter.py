@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -66,7 +67,16 @@ class ProcessorAdapter:
         raw_text = task.get("raw_text")
         if not isinstance(raw_text, str) or not raw_text.strip():
             raise ProcessorError("Submission raw_text is missing")
-        line_count = int(task.get("line_count") or count_nonempty_lines(raw_text))
+        actual_line_count = count_nonempty_lines(raw_text)
+        raw_line_count = task.get("line_count")
+        if raw_line_count is None:
+            line_count = actual_line_count
+        elif isinstance(raw_line_count, bool) or not isinstance(raw_line_count, int):
+            raise ProcessorError("Submission line_count is invalid")
+        else:
+            line_count = raw_line_count
+        if line_count < 1 or line_count > 5000 or line_count != actual_line_count:
+            raise ProcessorError("Submission line_count does not match raw_text")
         input_document = {
             "submission_id": task.get("id"),
             "raw_text": raw_text,
@@ -86,17 +96,18 @@ class ProcessorAdapter:
                     cwd=Path(__file__).resolve().parent,
                     stdout=stdout_file,
                     stderr=stderr_file,
+                    **process_group_options(),
                 )
             except OSError as error:
                 raise ProcessorError(f"Unable to start processor: {error}") from error
 
             while process.poll() is None:
                 if should_continue is not None and not should_continue():
-                    process.terminate()
+                    terminate_process_tree(process)
                     wait_or_kill(process)
                     raise ProcessorCanceled("Task cancellation requested")
                 if time.monotonic() - started > self.timeout_seconds:
-                    process.terminate()
+                    terminate_process_tree(process)
                     wait_or_kill(process)
                     raise ProcessorError(f"Processor timed out after {self.timeout_seconds:g} seconds")
                 time.sleep(self.poll_seconds)
@@ -126,8 +137,44 @@ def wait_or_kill(process: subprocess.Popen[bytes]) -> None:
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        process.kill()
+        kill_process_tree(process)
         process.wait(timeout=5)
+
+
+def process_group_options() -> dict[str, object]:
+    if os.name == "nt":
+        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+    return {"start_new_session": True}
+
+
+def terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            process.send_signal(getattr(signal, "CTRL_BREAK_EVENT", signal.SIGTERM))
+        else:
+            os.killpg(process.pid, signal.SIGTERM)
+    except (OSError, ProcessLookupError):
+        try:
+            process.terminate()
+        except OSError:
+            pass
+
+
+def kill_process_tree(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            process.kill()
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        try:
+            process.kill()
+        except OSError:
+            pass
 
 
 def tail_text(path: Path, limit: int = 2000) -> str:

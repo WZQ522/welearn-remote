@@ -49,6 +49,7 @@ const elements = {
 
 let api = null;
 let refreshTimer = null;
+let refreshRequestID = 0;
 let auth = loadAuth();
 let authView = window.location.hash === "#register" ? "register" : "login";
 const submissionState = new Map();
@@ -70,6 +71,7 @@ function loadAuth() {
 
 function saveAuth(value) {
   auth = value;
+  refreshRequestID += 1;
   if (value) localStorage.setItem(AUTH_KEY, JSON.stringify(value));
   else localStorage.removeItem(AUTH_KEY);
   updateAuthUI();
@@ -78,7 +80,7 @@ function saveAuth(value) {
 function clientId() {
   let value = localStorage.getItem(CLIENT_KEY);
   if (!value) {
-    value = crypto.randomUUID();
+    value = typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : randomToken(16);
     localStorage.setItem(CLIENT_KEY, value);
   }
   return value;
@@ -94,6 +96,7 @@ function friendlyError(error) {
     ["invitation_code_used", "邀请码已使用"],
     ["invitation_code_expired", "邀请码已过期，请使用当天生成的邀请码"],
     ["invalid_credentials", "用户名或密码不正确"],
+    ["auth_rate_limited", "尝试次数过多，请稍后再试"],
     ["admin_required", "需要管理员权限"],
     ["admin_target_protected", "管理员账号受保护，不能操作"],
     ["admin_self_protected", "不能删除当前登录的管理员账号"],
@@ -144,7 +147,9 @@ function messageFor(submission) {
 
 function formatTime(value) {
   if (!value) return "";
-  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
 function showAuthView(view, { updateHistory = false } = {}) {
@@ -303,6 +308,11 @@ async function refreshAdminConsole({ successMessage = "" } = {}) {
     renderAdminUsers(Array.isArray(usersResult.value) ? usersResult.value : []);
   } else {
     errors.push(`注册账号：${friendlyError(usersResult.reason)}`);
+  }
+  if (errors.some(error => /登录状态已失效|login_required|invalid session|session/i.test(error))) {
+    saveAuth(null);
+    elements.authMessage.textContent = "登录状态已失效，请重新登录";
+    return;
   }
   elements.adminMessage.textContent = errors.length
     ? `读取失败：${errors.join("；")}`
@@ -478,9 +488,10 @@ function render() {
 async function refreshSubmissions({ quiet = false } = {}) {
   if (!api || !auth) return;
   const activeSession = auth.sessionToken;
+  const requestID = ++refreshRequestID;
   try {
     const submissions = await api.listMine(activeSession);
-    if (auth?.sessionToken !== activeSession) return;
+    if (auth?.sessionToken !== activeSession || requestID !== refreshRequestID) return;
     submissionState.clear();
     for (const submission of Array.isArray(submissions) ? submissions : []) {
       if (submission?.id) submissionState.set(submission.id, submission);

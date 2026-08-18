@@ -32,6 +32,15 @@ LIVE_PROGRESS_SQL = (
 SCORE_SUMMARY_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0010_remote_score_summaries.sql"
 ).read_text(encoding="utf-8")
+SCORE_PROJECTION_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0011_score_summary_projection.sql"
+).read_text(encoding="utf-8")
+RECEIPT_PROJECTION_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0012_receipt_score_summary_projection.sql"
+).read_text(encoding="utf-8")
+RATE_LIMIT_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0013_auth_rate_limits.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -64,6 +73,7 @@ class SQLContractTests(unittest.TestCase):
         self.assertNotIn("'raw_text'", status_function)
         self.assertNotIn("password_hash", status_function)
         self.assertNotIn("code_text", status_function)
+        self.assertNotIn("'result_payload', submission.result_payload", status_function)
 
     def test_registration_atomically_consumes_one_daily_invitation(self) -> None:
         registration = SQL.split("function public.register_remote_user", 1)[1].split(
@@ -233,13 +243,38 @@ class SQLContractTests(unittest.TestCase):
     def test_owned_task_history_returns_structured_scores_without_account_secrets(self) -> None:
         self.assertIn("function public.list_my_submissions", SCORE_SUMMARY_SQL)
         self.assertIn("submission.user_id = owner_id", SCORE_SUMMARY_SQL)
-        self.assertIn("'result_payload', submission.result_payload", SCORE_SUMMARY_SQL)
+        self.assertIn("'score_summary', submission.result_payload -> 'score_summary'", SCORE_SUMMARY_SQL)
         self.assertNotIn("'raw_text', submission.raw_text", SCORE_SUMMARY_SQL)
         self.assertNotIn("password_hash", SCORE_SUMMARY_SQL)
         self.assertIn(
             "grant execute on function public.list_my_submissions(text, integer) to anon, authenticated",
             SCORE_SUMMARY_SQL,
         )
+
+    def test_score_projection_never_returns_full_processor_payload(self) -> None:
+        self.assertIn("function public.list_my_submissions", SCORE_PROJECTION_SQL)
+        self.assertIn("'score_summary', submission.result_payload -> 'score_summary'", SCORE_PROJECTION_SQL)
+        self.assertNotIn("'result_payload', submission.result_payload", SCORE_PROJECTION_SQL)
+        self.assertNotIn("'raw_text', submission.raw_text", SCORE_PROJECTION_SQL)
+        self.assertIn("grant execute on function public.list_my_submissions(text, integer) to anon, authenticated", SCORE_PROJECTION_SQL)
+
+    def test_receipt_status_projection_never_returns_full_processor_payload(self) -> None:
+        self.assertIn("function public.get_submission", RECEIPT_PROJECTION_SQL)
+        self.assertIn("'score_summary', submission.result_payload -> 'score_summary'", RECEIPT_PROJECTION_SQL)
+        self.assertNotIn("'result_payload', submission.result_payload", RECEIPT_PROJECTION_SQL)
+        self.assertIn(
+            "grant execute on function public.get_submission(uuid, text, text) to anon, authenticated",
+            RECEIPT_PROJECTION_SQL,
+        )
+
+    def test_authentication_rate_limit_is_database_enforced(self) -> None:
+        self.assertIn("create table if not exists public.remote_auth_rate_limits", RATE_LIMIT_SQL)
+        self.assertIn("create or replace function public.consume_remote_auth_rate_limit", RATE_LIMIT_SQL)
+        self.assertIn("register-user:' || normalized_username", RATE_LIMIT_SQL)
+        self.assertIn("register-code:' || normalized_code", RATE_LIMIT_SQL)
+        self.assertIn("login-user:' || normalized_username", RATE_LIMIT_SQL)
+        self.assertIn("raise exception 'auth_rate_limited'", RATE_LIMIT_SQL)
+        self.assertIn("revoke all on table public.remote_auth_rate_limits from anon, authenticated", RATE_LIMIT_SQL)
 
 
 if __name__ == "__main__":

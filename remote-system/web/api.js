@@ -22,12 +22,17 @@ export class SupabaseSubmissionApi {
     supabaseUrl,
     supabaseAnonKey,
     fetchImpl = (...args) => globalThis.fetch(...args),
+    requestTimeoutMs = 30000,
   }) {
     this.origin = normalizeOrigin(supabaseUrl);
     if (!supabaseAnonKey || supabaseAnonKey.length < 20) throw new Error("Supabase 公共密钥尚未配置");
     if (typeof fetchImpl !== "function") throw new Error("浏览器请求功能不可用");
+    if (!Number.isFinite(Number(requestTimeoutMs)) || Number(requestTimeoutMs) < 50) {
+      throw new Error("请求超时时间无效");
+    }
     this.anonKey = supabaseAnonKey;
     this.fetchImpl = fetchImpl;
+    this.requestTimeoutMs = Number(requestTimeoutMs);
   }
 
   register({ username, password, invitationCode }) {
@@ -170,24 +175,34 @@ export class SupabaseSubmissionApi {
   }
 
   async rpc(name, body) {
-    const response = await this.fetchImpl(`${this.origin}/rest/v1/rpc/${name}`, {
-      method: "POST",
-      headers: {
-        apikey: this.anonKey,
-        authorization: `Bearer ${this.anonKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    const text = await response.text();
-    let data = null;
-    if (text) {
-      try { data = JSON.parse(text); } catch { data = { message: text }; }
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timeout = setTimeout(() => controller?.abort(), this.requestTimeoutMs);
+    try {
+      const response = await this.fetchImpl(`${this.origin}/rest/v1/rpc/${name}`, {
+        method: "POST",
+        headers: {
+          apikey: this.anonKey,
+          authorization: `Bearer ${this.anonKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      const text = await response.text();
+      let data = null;
+      if (text) {
+        try { data = JSON.parse(text); } catch { data = { message: text }; }
+      }
+      if (!response.ok) {
+        const message = data?.message || data?.error || `HTTP ${response.status}`;
+        throw new Error(message);
+      }
+      return data;
+    } catch (error) {
+      if (controller?.signal.aborted) throw new Error("云端请求超时，请检查网络后重试");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    if (!response.ok) {
-      const message = data?.message || data?.error || `HTTP ${response.status}`;
-      throw new Error(message);
-    }
-    return data;
   }
 }

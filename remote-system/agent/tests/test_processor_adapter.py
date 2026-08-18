@@ -11,7 +11,7 @@ from unittest.mock import patch
 AGENT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AGENT_DIR))
 
-from processor_adapter import ProcessorAdapter, ProcessorCanceled  # noqa: E402
+from processor_adapter import ProcessorAdapter, ProcessorCanceled, ProcessorError  # noqa: E402
 
 
 class ProcessorAdapterTests(unittest.TestCase):
@@ -66,6 +66,24 @@ class ProcessorAdapterTests(unittest.TestCase):
                         },
                         should_continue=should_continue,
                     )
+
+    def test_line_count_mismatch_is_rejected_before_starting_processor(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            adapter = ProcessorAdapter(
+                [sys.executable, str(AGENT_DIR / "mock_processor.py")],
+                Path(temporary),
+                timeout_seconds=10,
+                poll_seconds=0.05,
+            )
+            with self.assertRaises(ProcessorError):
+                adapter.process(
+                    {
+                        "id": "task-mismatch",
+                        "raw_text": "u校园 account password 100\nwelearn account password 100",
+                        "line_count": 1,
+                        "attempt_count": 1,
+                    }
+                )
 
 
 if __name__ == "__main__":

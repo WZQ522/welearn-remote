@@ -7,6 +7,22 @@ test("randomToken returns fixed-width hexadecimal data", () => {
   assert.equal(randomToken(4, cryptoObject), "abababab");
 });
 
+test("web API converts an aborted request into a visible timeout error", async () => {
+  const api = new SupabaseSubmissionApi({
+    supabaseUrl: "https://project.supabase.co",
+    supabaseAnonKey: "anon-key-value-that-is-public",
+    requestTimeoutMs: 50,
+    fetchImpl: (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => {
+        const error = new Error("aborted");
+        error.name = "AbortError";
+        reject(error);
+      });
+    }),
+  });
+  await assert.rejects(() => api.listMine("s".repeat(64)), /云端请求超时/);
+});
+
 test("web API uses only the anon key and expected RPC body", async () => {
   let request;
   const api = new SupabaseSubmissionApi({

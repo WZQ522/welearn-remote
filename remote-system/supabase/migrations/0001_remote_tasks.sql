@@ -414,7 +414,7 @@ as $$
         'task_failed', submission.task_failed,
         'result_message', submission.result_message,
         'error_message', submission.error_message,
-        'result_payload', submission.result_payload,
+        'score_summary', submission.result_payload -> 'score_summary',
         'attempt_count', submission.attempt_count,
         'cancel_requested', submission.cancel_requested,
         'created_at', submission.created_at,

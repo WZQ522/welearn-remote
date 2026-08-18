@@ -1,6 +1,6 @@
 # Verification record
 
-Date: 2026-08-17
+Date: 2026-08-18
 
 ## Delivered behavior
 
@@ -15,6 +15,7 @@ Date: 2026-08-17
 - Task Scheduler scripts start and restart the Agent after Windows logon.
 - The admin console rotates today's unused invitation codes to a fixed set of 10, retains consumed-code history with the consuming account, and lists all registered accounts without password hashes.
 - Admins can reset ordinary-account passwords to `11111111` or delete ordinary accounts; admin accounts and the current admin session are protected.
+- The score-history and legacy receipt-status RPCs project only `score_summary`; neither returns the full processor result payload to the browser.
 
 ## Test commands
 
@@ -27,12 +28,12 @@ npm test --prefix remote-system/web
 Literal summary, exit status `0`:
 
 ```text
-Ran 6 tests in 0.173s
+Ran 9 tests in 0.175s
 OK
-Ran 14 tests in 0.000s
+Ran 23 tests in 0.001s
 OK
-tests 13
-pass 13
+tests 24
+pass 24
 fail 0
 ```
 
@@ -51,6 +52,7 @@ The preflight used fixture values and did not contact Supabase.
 - No old Worker address, CloudBase environment ID, old API path, Secret name, webhook, Cron entry, or LaunchAgent remains in active code.
 - The public web build test proves `SUPABASE_SERVICE_ROLE_KEY` is not copied into `dist/config.js`.
 - RLS tests prove anon/authenticated roles have no direct table permission.
+- Migration `0013_auth_rate_limits.sql` adds database-side limits for repeated login and invitation attempts; deploy it after `0012` before exposing registration publicly.
 
 ## Artifacts
 
@@ -65,6 +67,6 @@ The preflight used fixture values and did not contact Supabase.
 ## External verification still required
 
 - The live Supabase project still has the older migrations active; `0004_admin_console_and_invitation_rotation.sql` must be run in the Supabase SQL Editor. A live RPC probe returned `404` for `admin_list_remote_users`, confirming that the new database function is not deployed yet.
-- Run all four migrations in order before publishing the matching web build. The new migration immediately normalizes today's available-code pool to 10 and preserves already used rows.
+- Run migrations `0001` through `0013` in order before publishing the matching web build. `0011_score_summary_projection.sql` and `0012_receipt_score_summary_projection.sql` remove the full processor payload from browser responses; `0013_auth_rate_limits.sql` adds database-side login and registration throttling.
 - GitHub Pages preview deployment succeeded in workflow `31950231672` at `https://wzq522.github.io/welearn-remote/`.
 - Desktop width `1280` and mobile width `390` were rendered in the local browser. Both reported zero horizontal overflow; the mobile input counter changed from `0` to `2` for two non-empty lines.

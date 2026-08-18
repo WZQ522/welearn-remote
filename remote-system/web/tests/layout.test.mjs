@@ -33,6 +33,13 @@ test("account access requires a username, password, and invitation code", () => 
   assert.match(html, /id="submitButton"[^>]*disabled/);
 });
 
+test("deployment keeps the public page HTTPS-only and pins the external icon bundle", () => {
+  assert.match(html, /name="referrer" content="no-referrer"/);
+  assert.match(html, /http-equiv="Content-Security-Policy"/);
+  assert.match(html, /integrity="sha384-[A-Za-z0-9+/=]+"/);
+  assert.match(html, /crossorigin="anonymous"/);
+});
+
 test("admin console exposes invitation status and registered accounts", () => {
   assert.match(html, /id="adminCodeList"/);
   assert.match(html, /id="adminAvailableCount"/);
@@ -63,6 +70,12 @@ test("task history is account-scoped instead of device-scoped", () => {
   assert.match(app, /groupSubmissions\(submissions\)/);
   assert.match(app, /className = "batch-task-list"/);
   assert.match(app, /api\.submitBatch\(/);
+});
+
+test("overlapping refreshes cannot replace newer task state with an older response", () => {
+  assert.match(app, /let refreshRequestID = 0/);
+  assert.match(app, /const requestID = \+\+refreshRequestID/);
+  assert.match(app, /requestID !== refreshRequestID/);
 });
 
 test("every batch renders an execution score distribution module", () => {

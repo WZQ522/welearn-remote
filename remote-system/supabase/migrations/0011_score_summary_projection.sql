@@ -1,5 +1,7 @@
 begin;
 
+-- 0010 originally exposed the entire processor result to the browser. Keep
+-- the score feature while projecting only the fields the mobile console uses.
 create or replace function public.list_my_submissions(
     p_session_token text,
     p_limit integer default 5000
@@ -22,6 +24,7 @@ begin
     if owner_id is null then
         raise exception 'login_required';
     end if;
+
     select coalesce(jsonb_agg(record.payload order by record.created_at desc), '[]'::jsonb)
     into submissions
     from (

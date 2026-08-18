@@ -122,6 +122,12 @@ def normalized_processor_result(value: Any, fallback_total: int) -> dict[str, An
 
     if counts["task_completed"] + counts["task_failed"] > counts["task_total"]:
         raise ProcessorError("Processor result task counts exceed task_total")
+    if counts["task_total"] < 1:
+        raise ProcessorError("Processor result task_total must be positive")
+    if status == "completed" and counts["task_completed"] + counts["task_failed"] != counts["task_total"]:
+        raise ProcessorError("Completed processor result must settle every task")
+    if status == "failed" and counts["task_failed"] < 1:
+        raise ProcessorError("Failed processor result must include a failed task")
 
     message = value.get("result_message", "")
     if not isinstance(message, str):
@@ -170,12 +176,14 @@ class TaskAgent:
             message = str(error) or error.__class__.__name__
             print(f"failed task {task_id}: {message}", file=sys.stderr, flush=True)
             try:
-                self.client.report_failed(
+                reported = self.client.report_failed(
                     task_id,
                     self.config.agent_id,
                     message,
-                    max(0, int(task.get("line_count") or 0)),
+                    max(1, int(task.get("line_count") or 0)),
                 )
+                if not reported:
+                    print(f"cloud rejected failure report for {task_id}", file=sys.stderr, flush=True)
             except SupabaseError as report_error:
                 print(f"failed to upload error for {task_id}: {report_error}", file=sys.stderr, flush=True)
         finally:

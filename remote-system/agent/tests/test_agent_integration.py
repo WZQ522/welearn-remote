@@ -79,6 +79,32 @@ class AgentIntegrationTests(unittest.TestCase):
                 fallback_total=1,
             )
 
+    def test_completed_processor_result_must_settle_every_task(self) -> None:
+        with self.assertRaises(ProcessorError):
+            normalized_processor_result(
+                {
+                    "execution_status": "completed",
+                    "task_total": 2,
+                    "task_completed": 1,
+                    "task_failed": 0,
+                    "result_message": "incomplete fixture",
+                },
+                fallback_total=2,
+            )
+
+    def test_failed_processor_result_must_identify_a_failed_task(self) -> None:
+        with self.assertRaises(ProcessorError):
+            normalized_processor_result(
+                {
+                    "execution_status": "failed",
+                    "task_total": 1,
+                    "task_completed": 0,
+                    "task_failed": 0,
+                    "result_message": "missing failure count",
+                },
+                fallback_total=1,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
