@@ -55,12 +55,31 @@ test("submission form uses the original batch text contract", () => {
   assert.ok(html.indexOf("class=\"format-note\"") < html.indexOf("id=\"rawText\""));
 });
 
-test("every task card exposes independent cancel and delete actions", () => {
+test("active tasks expose cancel while only terminal tasks expose delete", () => {
   assert.match(html, /class="danger-button cancel-button"/);
   assert.match(html, /class="danger-button delete-button"/);
   assert.match(app, /api\.cancelMine\(submission\.id/);
   assert.match(app, /api\.retryMine\(submission\.id/);
   assert.match(app, /api\.removeMine\(submission\.id/);
+  assert.match(app, /remove\.hidden = \["pending", "processing"\]\.includes\(submission\.status\)/);
+});
+
+test("signed-in users have a separate wallet profile with recharge and ledger views", () => {
+  assert.match(html, /id="profileBand"/);
+  assert.match(html, /id="walletBalance"/);
+  assert.match(html, /id="rechargeForm"/);
+  assert.match(html, /id="rechargeRequestList"/);
+  assert.match(html, /id="walletTransactionList"/);
+  assert.match(html, /U校园[^<]*¥0\.30/);
+  assert.match(html, /WeLearn[^<]*¥0\.15/);
+  assert.match(app, /api\.getMyProfile\(/);
+  assert.match(app, /api\.createRechargeRequest\(/);
+});
+
+test("admin console can review recharge requests and adjust account balances", () => {
+  assert.match(html, /id="adminRechargeList"/);
+  assert.match(app, /api\.adminAdjustRemoteUserBalance\(/);
+  assert.match(app, /api\.adminDecideRechargeRequest\(/);
 });
 
 test("every account task reserves a stable row for recognized unit count and estimated charge", () => {

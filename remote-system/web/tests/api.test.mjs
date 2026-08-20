@@ -195,3 +195,29 @@ test("account task operations require only the signed-in session and task id", a
     assert.equal("p_view_token" in request.body, false);
   }
 });
+
+test("wallet and recharge operations use authenticated RPCs", async () => {
+  const requests = [];
+  const api = new SupabaseSubmissionApi({
+    supabaseUrl: "https://project.supabase.co",
+    supabaseAnonKey: "anon-key-value-that-is-public",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, body: JSON.parse(options.body) });
+      return { ok: true, status: 200, text: async () => "{}" };
+    },
+  });
+  const sessionToken = "s".repeat(64);
+  await api.getMyProfile(sessionToken);
+  await api.createRechargeRequest(sessionToken, 2000);
+  await api.adminListRechargeRequests(sessionToken);
+  await api.adminDecideRechargeRequest(sessionToken, "request-1", "approved", "已收款");
+  await api.adminAdjustRemoteUserBalance(sessionToken, "user-1", 500, "测试加款");
+
+  assert.deepEqual(requests.map(request => request.url.split("/").at(-1)), [
+    "get_my_profile",
+    "create_recharge_request",
+    "admin_list_recharge_requests",
+    "admin_decide_recharge_request",
+    "admin_adjust_remote_user_balance",
+  ]);
+});

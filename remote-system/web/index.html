@@ -9,12 +9,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
   <title>统一刷课助手</title>
   <link rel="preconnect" href="https://unpkg.com">
-  <link rel="stylesheet" href="styles.css?v=unit-summary-v1">
+  <link rel="stylesheet" href="styles.css?v=wallet-v1">
   <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"
     integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu"
     crossorigin="anonymous"></script>
   <script src="config.js"></script>
-  <script type="module" src="app.js?v=unit-summary-v1"></script>
+  <script type="module" src="app.js?v=wallet-v1"></script>
 </head>
 <body>
   <header class="app-bar">
@@ -72,9 +72,16 @@
           <span class="session-label">当前账户</span>
           <strong id="loggedUsername"></strong>
         </div>
-        <button id="logoutButton" class="secondary-button" type="button">
-          <i data-lucide="log-out"></i><span>退出登录</span>
-        </button>
+        <div class="session-actions">
+          <nav id="accountNavigation" class="account-navigation" aria-label="账户页面">
+            <button class="nav-button active" type="button" data-page="tasks"><i data-lucide="list-checks"></i><span>任务</span></button>
+            <button class="nav-button" type="button" data-page="profile"><i data-lucide="user-round"></i><span>个人主页</span></button>
+            <button class="nav-button admin-nav-button" type="button" data-page="admin" hidden><i data-lucide="shield-check"></i><span>管理后台</span></button>
+          </nav>
+          <button id="logoutButton" class="secondary-button" type="button">
+            <i data-lucide="log-out"></i><span>退出登录</span>
+          </button>
+        </div>
       </div>
       <p id="authMessage" class="auth-message" role="status"></p>
     </section>
@@ -102,7 +109,45 @@
         <h3>注册账号</h3>
         <div id="adminUserList" class="admin-user-list" aria-live="polite"></div>
       </div>
+      <div class="admin-group">
+        <h3>充值申请</h3>
+        <div id="adminRechargeList" class="admin-recharge-list" aria-live="polite"></div>
+      </div>
       <p id="adminMessage" class="auth-message" role="status"></p>
+    </section>
+
+    <section id="profileBand" class="profile-band" aria-labelledby="profileTitle" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">个人账户</p>
+          <h2 id="profileTitle">个人主页</h2>
+        </div>
+        <strong id="walletBalance" class="wallet-balance">¥0.00</strong>
+      </div>
+      <div class="wallet-overview" aria-label="账户资金概览">
+        <span><small>累计消费</small><strong id="walletCharged">¥0.00</strong></span>
+        <span><small>累计退款</small><strong id="walletRefunded">¥0.00</strong></span>
+        <span><small>计费规则</small><strong>U校园 ¥0.30 / 单元</strong><strong>WeLearn ¥0.15 / 单元</strong></span>
+      </div>
+      <div class="profile-section">
+        <h3>申请充值</h3>
+        <form id="rechargeForm" class="recharge-form">
+          <label for="rechargeAmount">充值金额（元）</label>
+          <input id="rechargeAmount" name="amount" type="number" min="1" max="10000" step="0.01" inputmode="decimal" required>
+          <label for="rechargeNote">备注</label>
+          <input id="rechargeNote" name="note" type="text" maxlength="200" placeholder="选填">
+          <button id="rechargeButton" class="primary-button" type="submit"><i data-lucide="wallet-cards"></i><span>提交充值申请</span></button>
+        </form>
+        <p id="profileMessage" class="auth-message" role="status"></p>
+      </div>
+      <div class="profile-section">
+        <h3>充值记录</h3>
+        <div id="rechargeRequestList" class="ledger-list" aria-live="polite"></div>
+      </div>
+      <div class="profile-section">
+        <h3>资金明细</h3>
+        <div id="walletTransactionList" class="ledger-list" aria-live="polite"></div>
+      </div>
     </section>
 
     <section id="submitBand" class="submit-band" aria-labelledby="submitTitle" hidden>
@@ -168,11 +213,12 @@
         <span class="completed-count"></span>
         <span class="failed-count"></span>
       </div>
-      <div class="unit-summary-row" aria-label="单元识别和预计费用">
+      <div class="unit-summary-row" aria-label="单元识别和任务费用">
         <span><small>实际单元</small><strong class="available-unit-count">等待识别</strong></span>
         <span><small>本次单元</small><strong class="selected-unit-count">等待识别</strong></span>
-        <span><small>预计费用</small><strong class="estimated-unit-charge">-</strong></span>
+        <span><small>任务费用</small><strong class="estimated-unit-charge">-</strong></span>
       </div>
+      <p class="billing-state"></p>
       <p class="task-message"></p>
       <footer>
         <span class="attempt-count"></span>

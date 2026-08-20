@@ -121,14 +121,14 @@ test("unit summary exposes recognized and selected billable units without invent
     unit_summary: {
       available_unit_count: 6,
       selected_unit_count: 1,
-      unit_price_cents: 50,
-      estimated_amount_cents: 50,
+      unit_price_cents: 30,
+      estimated_amount_cents: 30,
     },
   }), {
     availableUnitCount: 6,
     selectedUnitCount: 1,
-    unitPriceCents: 50,
-    estimatedAmountCents: 50,
+    unitPriceCents: 30,
+    estimatedAmountCents: 30,
   });
   assert.equal(submissionUnitSummary({}), null);
   assert.equal(submissionUnitSummary({ unit_summary: { available_unit_count: 0 } }), null);

@@ -1,5 +1,5 @@
-import { randomToken, SupabaseSubmissionApi } from "./api.js?v=account-tasks-v1";
-import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "./task-model.js?v=unit-summary-v1";
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=wallet-v1";
+import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "./task-model.js?v=wallet-v1";
 
 const CLIENT_KEY = "unified-remote-client-id-v1";
 const AUTH_KEY = "unified-remote-auth-v1";
@@ -28,10 +28,24 @@ const elements = {
   adminUsedCount: document.querySelector("#adminUsedCount"),
   adminUserCount: document.querySelector("#adminUserCount"),
   adminUserList: document.querySelector("#adminUserList"),
+  adminRechargeList: document.querySelector("#adminRechargeList"),
   adminMessage: document.querySelector("#adminMessage"),
   userSession: document.querySelector("#userSession"),
   loggedUsername: document.querySelector("#loggedUsername"),
+  accountNavigation: document.querySelector("#accountNavigation"),
+  adminNavButton: document.querySelector(".admin-nav-button"),
   logoutButton: document.querySelector("#logoutButton"),
+  profileBand: document.querySelector("#profileBand"),
+  walletBalance: document.querySelector("#walletBalance"),
+  walletCharged: document.querySelector("#walletCharged"),
+  walletRefunded: document.querySelector("#walletRefunded"),
+  rechargeForm: document.querySelector("#rechargeForm"),
+  rechargeAmount: document.querySelector("#rechargeAmount"),
+  rechargeNote: document.querySelector("#rechargeNote"),
+  rechargeButton: document.querySelector("#rechargeButton"),
+  rechargeRequestList: document.querySelector("#rechargeRequestList"),
+  walletTransactionList: document.querySelector("#walletTransactionList"),
+  profileMessage: document.querySelector("#profileMessage"),
   form: document.querySelector("#submissionForm"),
   rawText: document.querySelector("#rawText"),
   lineCount: document.querySelector("#lineCount"),
@@ -52,6 +66,8 @@ let refreshTimer = null;
 let refreshRequestID = 0;
 let auth = loadAuth();
 let authView = window.location.hash === "#register" ? "register" : "login";
+let activePage = "tasks";
+let profileState = null;
 const submissionState = new Map();
 
 function countLines(value) {
@@ -101,6 +117,10 @@ function friendlyError(error) {
     ["admin_target_protected", "管理员账号受保护，不能操作"],
     ["admin_self_protected", "不能删除当前登录的管理员账号"],
     ["remote_user_not_found", "账号不存在或已被删除"],
+    ["invalid_recharge_amount", "充值金额必须在 1 元到 10000 元之间"],
+    ["too_many_pending_recharges", "最多保留 3 条待处理充值申请"],
+    ["insufficient_balance", "账户余额不足"],
+    ["adjustment_reason_required", "调整余额时必须填写原因"],
     ["login_required", "登录状态已失效，请重新登录"],
   ];
   return messages.find(([code]) => message.includes(code))?.[1] || message;
@@ -153,7 +173,23 @@ function formatTime(value) {
 }
 
 function formatMoney(cents) {
-  return `¥${(cents / 100).toFixed(2)}`;
+  const value = Number(cents);
+  return `¥${(Number.isFinite(value) ? value / 100 : 0).toFixed(2)}`;
+}
+
+function setActivePage(page) {
+  const allowed = page === "profile" || (page === "admin" && auth?.isAdmin) ? page : "tasks";
+  activePage = allowed;
+  const loggedIn = Boolean(auth);
+  elements.submitBand.hidden = !loggedIn || allowed !== "tasks";
+  elements.tasksBand.hidden = !loggedIn || allowed !== "tasks";
+  elements.profileBand.hidden = !loggedIn || allowed !== "profile";
+  elements.adminBand.hidden = !loggedIn || !auth?.isAdmin || allowed !== "admin";
+  for (const button of elements.accountNavigation.querySelectorAll(".nav-button")) {
+    button.classList.toggle("active", button.dataset.page === allowed);
+  }
+  if (allowed === "profile") refreshProfile({ quiet: true });
+  if (allowed === "admin") refreshAdminConsole();
 }
 
 function showAuthView(view, { updateHistory = false } = {}) {
@@ -174,14 +210,18 @@ function updateAuthUI() {
   elements.userSession.hidden = !loggedIn;
   elements.accountTitle.textContent = loggedIn ? "账户" : authView === "register" ? "注册" : "登录";
   elements.loggedUsername.textContent = loggedIn ? auth.username : "";
-  elements.submitBand.hidden = !loggedIn;
-  elements.tasksBand.hidden = !loggedIn;
-  elements.adminBand.hidden = !loggedIn || !auth.isAdmin;
+  elements.adminNavButton.hidden = !loggedIn || !auth?.isAdmin;
   elements.submit.disabled = !api || !loggedIn;
   elements.refresh.disabled = !api || !loggedIn;
   elements.loginButton.disabled = !api;
   elements.registerButton.disabled = !api;
+  if (loggedIn) setActivePage(activePage);
   if (!loggedIn) {
+    activePage = "tasks";
+    elements.submitBand.hidden = true;
+    elements.tasksBand.hidden = true;
+    elements.profileBand.hidden = true;
+    elements.adminBand.hidden = true;
     showAuthView(authView);
     clearTimeout(refreshTimer);
     elements.connection.textContent = api ? "请登录后查看任务" : "云端尚未配置";
@@ -234,7 +274,7 @@ function renderAdminUsers(users) {
     const username = document.createElement("strong");
     username.textContent = item.username;
     const role = document.createElement("span");
-    role.textContent = item.is_admin ? "管理员" : "普通账号";
+    role.textContent = item.is_admin ? "管理员 · 免扣费" : `普通账号 · 余额 ${formatMoney(item.balance_cents)}`;
     identity.append(username, role);
     const activity = document.createElement("div");
     activity.className = "admin-user-activity";
@@ -257,18 +297,88 @@ function renderAdminUsers(users) {
       resetButton.title = "重置密码为 11111111";
       resetButton.innerHTML = '<i data-lucide="key-round"></i><span>重置密码</span>';
       resetButton.addEventListener("click", () => resetRemoteUserPassword(item));
+      const balanceButton = document.createElement("button");
+      balanceButton.className = "secondary-button admin-action-button";
+      balanceButton.type = "button";
+      balanceButton.title = "调整账户余额";
+      balanceButton.innerHTML = '<i data-lucide="wallet-cards"></i><span>调整余额</span>';
+      balanceButton.addEventListener("click", () => adjustRemoteUserBalance(item));
       const deleteButton = document.createElement("button");
       deleteButton.className = "danger-button admin-action-button";
       deleteButton.type = "button";
       deleteButton.title = "删除账号";
       deleteButton.innerHTML = '<i data-lucide="trash-2"></i><span>删除账号</span>';
       deleteButton.addEventListener("click", () => deleteRemoteUser(item));
-      actions.append(resetButton, deleteButton);
+      actions.append(balanceButton, resetButton, deleteButton);
     }
     row.append(identity, activity, actions);
     elements.adminUserList.append(row);
   }
   window.lucide?.createIcons();
+}
+
+async function adjustRemoteUserBalance(user) {
+  if (!auth?.isAdmin) return;
+  const amountText = prompt(`调整 ${user.username} 的余额（元）。加款输入正数，扣款输入负数：`, "10.00");
+  if (amountText === null) return;
+  const amountCents = Math.round(Number(amountText) * 100);
+  if (!Number.isInteger(amountCents) || amountCents === 0) {
+    elements.adminMessage.textContent = "请输入有效且不为 0 的金额";
+    return;
+  }
+  const reason = prompt("请输入本次余额调整原因：", "管理员人工调整");
+  if (!reason?.trim()) return;
+  try {
+    await api.adminAdjustRemoteUserBalance(auth.sessionToken, user.id, amountCents, reason.trim());
+    await refreshAdminConsole({ successMessage: `${user.username} 余额已调整 ${formatMoney(amountCents)}` });
+  } catch (error) {
+    elements.adminMessage.textContent = `余额调整失败：${friendlyError(error)}`;
+  }
+}
+
+function renderAdminRechargeRequests(requests) {
+  elements.adminRechargeList.replaceChildren();
+  if (!requests.length) {
+    elements.adminRechargeList.textContent = "暂无充值申请";
+    return;
+  }
+  for (const item of requests) {
+    const row = document.createElement("div");
+    row.className = "admin-recharge-row";
+    const details = document.createElement("div");
+    details.className = "admin-user-identity";
+    const title = document.createElement("strong");
+    title.textContent = `${item.username} · ${formatMoney(item.amount_cents)}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${rechargeStatusLabel(item.status)} · ${formatTime(item.created_at)}`;
+    details.append(title, meta);
+    const actions = document.createElement("div");
+    actions.className = "admin-user-actions";
+    if (item.status === "pending") {
+      for (const [decision, label, className] of [["approved", "确认到账", "primary-button"], ["rejected", "拒绝", "danger-button"]]) {
+        const button = document.createElement("button");
+        button.className = `${className} admin-action-button`;
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", () => decideRechargeRequest(item, decision));
+        actions.append(button);
+      }
+    }
+    row.append(details, actions);
+    elements.adminRechargeList.append(row);
+  }
+}
+
+async function decideRechargeRequest(request, decision) {
+  if (!auth?.isAdmin) return;
+  const action = decision === "approved" ? "确认充值到账并增加余额" : "拒绝充值申请";
+  if (!confirm(`${action}：${request.username} ${formatMoney(request.amount_cents)}？`)) return;
+  try {
+    await api.adminDecideRechargeRequest(auth.sessionToken, request.id, decision, decision === "approved" ? "已确认到账" : "管理员拒绝");
+    await refreshAdminConsole({ successMessage: "充值申请已处理" });
+  } catch (error) {
+    elements.adminMessage.textContent = `处理失败：${friendlyError(error)}`;
+  }
 }
 
 async function resetRemoteUserPassword(user) {
@@ -296,9 +406,10 @@ async function deleteRemoteUser(user) {
 async function refreshAdminConsole({ successMessage = "" } = {}) {
   if (!api || !auth?.isAdmin) return;
   const activeSession = auth.sessionToken;
-  const [codesResult, usersResult] = await Promise.allSettled([
+  const [codesResult, usersResult, rechargeResult] = await Promise.allSettled([
     api.adminListInvitationCodes(activeSession),
     api.adminListRemoteUsers(activeSession),
+    api.adminListRechargeRequests(activeSession),
   ]);
   if (auth?.sessionToken !== activeSession) return;
 
@@ -313,6 +424,11 @@ async function refreshAdminConsole({ successMessage = "" } = {}) {
   } else {
     errors.push(`注册账号：${friendlyError(usersResult.reason)}`);
   }
+  if (rechargeResult.status === "fulfilled") {
+    renderAdminRechargeRequests(Array.isArray(rechargeResult.value) ? rechargeResult.value : []);
+  } else {
+    errors.push(`充值申请：${friendlyError(rechargeResult.reason)}`);
+  }
   if (errors.some(error => /登录状态已失效|login_required|invalid session|session/i.test(error))) {
     saveAuth(null);
     elements.authMessage.textContent = "登录状态已失效，请重新登录";
@@ -325,6 +441,95 @@ async function refreshAdminConsole({ successMessage = "" } = {}) {
 
 function syncAuthViewFromLocation() {
   if (!auth) showAuthView(window.location.hash === "#register" ? "register" : "login");
+}
+
+function rechargeStatusLabel(status) {
+  return { pending: "待确认", approved: "已到账", rejected: "已拒绝" }[status] || "状态未知";
+}
+
+function transactionTypeLabel(type) {
+  return {
+    recharge: "充值到账",
+    admin_adjustment: "管理员调整",
+    task_charge: "任务扣费",
+    task_refund: "失败退款",
+  }[type] || "资金变动";
+}
+
+function renderLedger(container, items, itemRenderer, emptyText) {
+  container.replaceChildren();
+  if (!items.length) {
+    container.textContent = emptyText;
+    return;
+  }
+  for (const item of items) container.append(itemRenderer(item));
+}
+
+function renderProfile(profile) {
+  profileState = profile && typeof profile === "object" ? profile : null;
+  elements.walletBalance.textContent = auth?.isAdmin ? "管理员免扣费" : formatMoney(profileState?.balance_cents);
+  elements.walletCharged.textContent = formatMoney(profileState?.total_charged_cents);
+  elements.walletRefunded.textContent = formatMoney(profileState?.total_refunded_cents);
+  elements.rechargeForm.hidden = auth?.isAdmin === true;
+
+  renderLedger(
+    elements.rechargeRequestList,
+    Array.isArray(profileState?.recharge_requests) ? profileState.recharge_requests : [],
+    item => {
+      const row = document.createElement("div");
+      row.className = "ledger-row";
+      const details = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = formatMoney(item.amount_cents);
+      const meta = document.createElement("span");
+      meta.textContent = `${formatTime(item.created_at)}${item.admin_note ? ` · ${item.admin_note}` : ""}`;
+      details.append(title, meta);
+      const status = document.createElement("span");
+      status.className = `ledger-status ${item.status}`;
+      status.textContent = rechargeStatusLabel(item.status);
+      row.append(details, status);
+      return row;
+    },
+    "暂无充值申请",
+  );
+
+  renderLedger(
+    elements.walletTransactionList,
+    Array.isArray(profileState?.transactions) ? profileState.transactions : [],
+    item => {
+      const row = document.createElement("div");
+      row.className = "ledger-row";
+      const details = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = `${transactionTypeLabel(item.type)} · ${item.description || ""}`;
+      const meta = document.createElement("span");
+      meta.textContent = `${formatTime(item.created_at)} · 余额 ${formatMoney(item.balance_after_cents)}`;
+      details.append(title, meta);
+      const amount = document.createElement("strong");
+      amount.className = Number(item.amount_cents) >= 0 ? "money-positive" : "money-negative";
+      amount.textContent = `${Number(item.amount_cents) >= 0 ? "+" : "-"}${formatMoney(Math.abs(Number(item.amount_cents)))}`;
+      row.append(details, amount);
+      return row;
+    },
+    "暂无资金变动",
+  );
+}
+
+async function refreshProfile({ quiet = false } = {}) {
+  if (!api || !auth) return;
+  const activeSession = auth.sessionToken;
+  try {
+    const profile = await api.getMyProfile(activeSession);
+    if (auth?.sessionToken !== activeSession) return;
+    renderProfile(profile);
+  } catch (error) {
+    if (isAuthError(error)) {
+      saveAuth(null);
+      elements.authMessage.textContent = "登录状态已失效，请重新登录";
+      return;
+    }
+    if (!quiet) elements.profileMessage.textContent = `读取失败：${friendlyError(error)}`;
+  }
 }
 
 function renderTask(submission) {
@@ -352,6 +557,15 @@ function renderTask(submission) {
     card.querySelector(".selected-unit-count").textContent = `${unitSummary.selectedUnitCount} 个`;
     card.querySelector(".estimated-unit-charge").textContent = formatMoney(unitSummary.estimatedAmountCents);
   }
+  const billingState = card.querySelector(".billing-state");
+  const billingLabels = {
+    charged: `已扣费 ${formatMoney(submission.charge_amount_cents)}`,
+    refunded: `执行失败，已退款 ${formatMoney(submission.charge_amount_cents)}`,
+    exempt: "管理员任务，免扣费",
+    unpriced: "尚未开始扣费",
+  };
+  billingState.textContent = billingLabels[submission.charge_status] || "等待计费";
+  billingState.dataset.status = submission.charge_status || "unpriced";
   card.querySelector(".task-message").textContent = messageFor(submission);
   card.querySelector(".attempt-count").textContent = `执行次数 ${submission.attempt_count || 0}`;
 
@@ -360,6 +574,7 @@ function renderTask(submission) {
   cancel.addEventListener("click", () => cancelSubmission(submission));
 
   const remove = card.querySelector(".delete-button");
+  remove.hidden = ["pending", "processing"].includes(submission.status);
   remove.addEventListener("click", () => deleteSubmission(submission));
 
   const retry = card.querySelector(".retry-button");
@@ -539,11 +754,11 @@ async function cancelSubmission(submission) {
 
 async function deleteSubmission(submission) {
   if (!auth) return;
-  const active = ["pending", "processing"].includes(submission.status);
-  const prompt = active
-    ? "删除这一条任务吗？电脑端将在下一次状态检查时停止这项任务，其他任务不受影响。"
-    : "永久删除这一条任务记录吗？其他任务不受影响。";
-  if (!confirm(prompt)) return;
+  if (["pending", "processing"].includes(submission.status)) {
+    elements.message.textContent = "运行中的任务请先取消，结束后才能删除记录";
+    return;
+  }
+  if (!confirm("永久删除这一条任务记录吗？删除记录不会退款，资金明细仍会保留。")) return;
 
   try {
     const deleted = await api.removeMine(submission.id, auth.sessionToken);
@@ -582,6 +797,12 @@ elements.showLoginLink.addEventListener("click", event => {
 window.addEventListener("hashchange", syncAuthViewFromLocation);
 window.addEventListener("popstate", syncAuthViewFromLocation);
 
+elements.accountNavigation.addEventListener("click", event => {
+  const button = event.target.closest("button[data-page]");
+  if (!button) return;
+  setActivePage(button.dataset.page);
+});
+
 elements.loginForm.addEventListener("submit", async event => {
   event.preventDefault();
   elements.authMessage.textContent = "";
@@ -596,6 +817,7 @@ elements.loginForm.addEventListener("submit", async event => {
     elements.authMessage.textContent = "登录成功";
     render();
     await refreshSubmissions({ quiet: true });
+    await refreshProfile({ quiet: true });
     await refreshAdminConsole();
   } catch (error) {
     elements.authMessage.textContent = `登录失败：${friendlyError(error)}`;
@@ -620,6 +842,7 @@ elements.registerForm.addEventListener("submit", async event => {
     elements.authMessage.textContent = "注册成功，邀请码已使用";
     render();
     await refreshSubmissions({ quiet: true });
+    await refreshProfile({ quiet: true });
   } catch (error) {
     elements.authMessage.textContent = `注册失败：${friendlyError(error)}`;
   } finally {
@@ -641,8 +864,12 @@ elements.logoutButton.addEventListener("click", async () => {
     submissionState.clear();
     elements.authMessage.textContent = "已退出登录";
     elements.adminMessage.textContent = "";
+    elements.profileMessage.textContent = "";
+    profileState = null;
     renderAdminCodes([]);
     renderAdminUsers([]);
+    renderAdminRechargeRequests([]);
+    renderProfile(null);
     render();
     elements.logoutButton.disabled = false;
   }
@@ -659,6 +886,31 @@ elements.issueInvitationButton.addEventListener("click", async () => {
     elements.adminMessage.textContent = `生成失败：${friendlyError(error)}`;
   } finally {
     elements.issueInvitationButton.disabled = false;
+  }
+});
+
+elements.rechargeForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!auth || auth.isAdmin) return;
+  const amount = Number(elements.rechargeAmount.value);
+  const amountCents = Math.round(amount * 100);
+  if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > 1000000) {
+    elements.profileMessage.textContent = "充值金额必须在 1 元到 10000 元之间";
+    return;
+  }
+  elements.rechargeButton.disabled = true;
+  elements.profileMessage.textContent = "正在提交充值申请";
+  try {
+    await api.createRechargeRequest(auth.sessionToken, amountCents, elements.rechargeNote.value.trim() || null);
+    elements.rechargeAmount.value = "";
+    elements.rechargeNote.value = "";
+    elements.profileMessage.textContent = "充值申请已提交，等待管理员确认到账";
+    await refreshProfile({ quiet: true });
+    if (auth.isAdmin) await refreshAdminConsole();
+  } catch (error) {
+    elements.profileMessage.textContent = `提交失败：${friendlyError(error)}`;
+  } finally {
+    elements.rechargeButton.disabled = false;
   }
 });
 
@@ -708,6 +960,7 @@ elements.form.addEventListener("submit", async event => {
 
 elements.refresh.addEventListener("click", () => {
   refreshSubmissions();
+  refreshProfile();
   refreshAdminConsole();
 });
 
@@ -717,6 +970,7 @@ try {
   updateAuthUI();
   render();
   refreshSubmissions({ quiet: true });
+  refreshProfile({ quiet: true });
   refreshAdminConsole();
 } catch (error) {
   elements.connection.textContent = "云端尚未配置";

@@ -44,6 +44,9 @@ RATE_LIMIT_SQL = (
 UNIT_SUMMARY_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0014_unit_summary_projection.sql"
 ).read_text(encoding="utf-8")
+BILLING_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0015_wallet_billing_and_profile.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -285,6 +288,41 @@ class SQLContractTests(unittest.TestCase):
         self.assertIn("p_unit_summary jsonb", UNIT_SUMMARY_SQL)
         self.assertIn("jsonb_build_object('unit_summary', p_unit_summary)", UNIT_SUMMARY_SQL)
         self.assertIn("grant execute on function public.agent_update_submission_progress", UNIT_SUMMARY_SQL)
+
+    def test_wallet_billing_is_atomic_server_priced_and_idempotent(self) -> None:
+        self.assertIn("create table if not exists public.wallet_transactions", BILLING_SQL)
+        self.assertIn("create table if not exists public.recharge_requests", BILLING_SQL)
+        self.assertIn("function public.agent_authorize_submission_charge", BILLING_SQL)
+        self.assertIn("for update", BILLING_SQL)
+        self.assertIn("when 'ucampus' then 30", BILLING_SQL)
+        self.assertIn("when 'welearn' then 15", BILLING_SQL)
+        self.assertIn("idempotency_key", BILLING_SQL)
+        self.assertIn("balance_cents = balance_cents - charge_amount", BILLING_SQL)
+
+    def test_failed_execution_refunds_but_deletion_never_controls_money(self) -> None:
+        report_function = BILLING_SQL.split("function public.agent_report_submission", 1)[1].split(
+            "function public.list_my_submissions", 1
+        )[0]
+        self.assertIn("task_refund", report_function)
+        self.assertIn("charge_status = 'refunded'", report_function)
+        delete_function = BILLING_SQL.split("function public.delete_my_submission", 1)[1].split(
+            "function public.delete_submission", 1
+        )[0]
+        self.assertIn("status in ('completed', 'failed', 'canceled')", delete_function)
+        self.assertNotIn("balance_cents", delete_function)
+        self.assertNotIn("wallet_transactions", delete_function)
+
+    def test_profile_and_admin_wallet_rpcs_keep_tables_private(self) -> None:
+        for name in (
+            "get_my_profile",
+            "create_recharge_request",
+            "admin_list_recharge_requests",
+            "admin_decide_recharge_request",
+            "admin_adjust_remote_user_balance",
+        ):
+            self.assertIn(f"function public.{name}", BILLING_SQL)
+        self.assertIn("revoke all on table public.wallet_transactions from anon, authenticated", BILLING_SQL)
+        self.assertIn("revoke all on table public.recharge_requests from anon, authenticated", BILLING_SQL)
 
 
 if __name__ == "__main__":

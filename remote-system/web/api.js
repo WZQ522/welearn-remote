@@ -88,6 +88,40 @@ export class SupabaseSubmissionApi {
     });
   }
 
+  getMyProfile(sessionToken, limit = 100) {
+    return this.rpc("get_my_profile", { p_session_token: sessionToken, p_limit: limit });
+  }
+
+  createRechargeRequest(sessionToken, amountCents, userNote = null) {
+    return this.rpc("create_recharge_request", {
+      p_session_token: sessionToken,
+      p_amount_cents: amountCents,
+      p_user_note: userNote,
+    });
+  }
+
+  adminListRechargeRequests(sessionToken, limit = 200) {
+    return this.rpc("admin_list_recharge_requests", { p_session_token: sessionToken, p_limit: limit });
+  }
+
+  adminDecideRechargeRequest(sessionToken, requestId, decision, adminNote = null) {
+    return this.rpc("admin_decide_recharge_request", {
+      p_session_token: sessionToken,
+      p_request_id: requestId,
+      p_decision: decision,
+      p_admin_note: adminNote,
+    });
+  }
+
+  adminAdjustRemoteUserBalance(sessionToken, targetUserId, amountCents, reason) {
+    return this.rpc("admin_adjust_remote_user_balance", {
+      p_session_token: sessionToken,
+      p_target_user_id: targetUserId,
+      p_amount_cents: amountCents,
+      p_reason: reason,
+    });
+  }
+
   submit({ rawText, clientId, viewToken, sessionToken }) {
     return this.rpc("submit_submission", {
       p_raw_text: rawText,
