@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { batchScoreSummary, batchStatus, groupSubmissions } from "../task-model.js";
+import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "../task-model.js";
 
 test("submissions are grouped by batch and ordered by account position", () => {
   const groups = groupSubmissions([
@@ -114,4 +114,22 @@ test("unfinished and legacy records never create synthetic scores", () => {
   assert.equal(summary.scoredAccountCount, 0);
   assert.equal(summary.unscoredAccountCount, 1);
   assert.equal(summary.averageScore, null);
+});
+
+test("unit summary exposes recognized and selected billable units without inventing legacy values", () => {
+  assert.deepEqual(submissionUnitSummary({
+    unit_summary: {
+      available_unit_count: 6,
+      selected_unit_count: 1,
+      unit_price_cents: 50,
+      estimated_amount_cents: 50,
+    },
+  }), {
+    availableUnitCount: 6,
+    selectedUnitCount: 1,
+    unitPriceCents: 50,
+    estimatedAmountCents: 50,
+  });
+  assert.equal(submissionUnitSummary({}), null);
+  assert.equal(submissionUnitSummary({ unit_summary: { available_unit_count: 0 } }), null);
 });

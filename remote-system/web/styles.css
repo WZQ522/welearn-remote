@@ -153,6 +153,13 @@ textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px #d8eee6; }
 .progress-track::-moz-progress-bar { background: var(--green); }
 .score-row { display: flex; gap: 18px; color: #44534c; font-size: 12px; font-weight: 650; }
 .failed-count { color: var(--red); }
+.unit-summary-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 11px; padding: 10px 0; border-top: 1px solid #e4e9e6; border-bottom: 1px solid #e4e9e6; }
+.unit-summary-row > span { min-width: 0; padding: 0 10px; border-right: 1px solid #e4e9e6; }
+.unit-summary-row > span:first-child { padding-left: 0; }
+.unit-summary-row > span:last-child { padding-right: 0; border-right: 0; }
+.unit-summary-row small { display: block; color: var(--muted); font-size: 11px; }
+.unit-summary-row strong { display: block; margin-top: 3px; color: var(--ink); font-size: 14px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.estimated-unit-charge { color: var(--green-dark) !important; }
 .task-message { min-height: 20px; margin: 10px 0 12px; color: #44534c; font-size: 13px; overflow-wrap: anywhere; }
 .task-card footer { align-items: center; padding-top: 11px; border-top: 1px solid #e4e9e6; }
 .attempt-count { color: var(--muted); font-size: 12px; }

@@ -27,6 +27,7 @@ flowchart LR
 - `supabase/migrations/0011_score_summary_projection.sql`: replaces the full result-payload response with a score-only projection for the mobile console.
 - `supabase/migrations/0012_receipt_score_summary_projection.sql`: applies the same score-only projection to the legacy receipt-token status endpoint.
 - `supabase/migrations/0013_auth_rate_limits.sql`: adds database-side limits for repeated login and invitation attempts.
+- `supabase/migrations/0014_unit_summary_projection.sql`: stores the desktop's validated actual/selected unit counts during recognition and exposes only that quote to the signed-in website.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -35,7 +36,7 @@ flowchart LR
 ## 1. Supabase
 
 1. Create a Supabase Free project.
-2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0013_auth_rate_limits.sql` in numeric order in the Supabase SQL Editor.
+2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0014_unit_summary_projection.sql` in numeric order in the Supabase SQL Editor.
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 

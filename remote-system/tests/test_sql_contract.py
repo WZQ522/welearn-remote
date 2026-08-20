@@ -41,6 +41,9 @@ RECEIPT_PROJECTION_SQL = (
 RATE_LIMIT_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0013_auth_rate_limits.sql"
 ).read_text(encoding="utf-8")
+UNIT_SUMMARY_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0014_unit_summary_projection.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -275,6 +278,13 @@ class SQLContractTests(unittest.TestCase):
         self.assertIn("login-user:' || normalized_username", RATE_LIMIT_SQL)
         self.assertIn("raise exception 'auth_rate_limited'", RATE_LIMIT_SQL)
         self.assertIn("revoke all on table public.remote_auth_rate_limits from anon, authenticated", RATE_LIMIT_SQL)
+
+    def test_unit_summary_is_projected_without_exposing_the_full_processor_result(self) -> None:
+        self.assertIn("'unit_summary', submission.result_payload -> 'unit_summary'", UNIT_SUMMARY_SQL)
+        self.assertNotIn("'result_payload', submission.result_payload", UNIT_SUMMARY_SQL)
+        self.assertIn("p_unit_summary jsonb", UNIT_SUMMARY_SQL)
+        self.assertIn("jsonb_build_object('unit_summary', p_unit_summary)", UNIT_SUMMARY_SQL)
+        self.assertIn("grant execute on function public.agent_update_submission_progress", UNIT_SUMMARY_SQL)
 
 
 if __name__ == "__main__":

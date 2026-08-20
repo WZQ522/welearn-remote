@@ -47,6 +47,28 @@ function nonNegativeInteger(value) {
   return Number.isInteger(number) && number >= 0 ? number : 0;
 }
 
+function positiveInteger(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+export function submissionUnitSummary(submission) {
+  const value = submission?.unit_summary ?? submission?.result_payload?.unit_summary;
+  if (!value || typeof value !== "object") return null;
+  const availableUnitCount = positiveInteger(value.available_unit_count);
+  const selectedUnitCount = positiveInteger(value.selected_unit_count);
+  const unitPriceCents = positiveInteger(value.unit_price_cents);
+  const estimatedAmountCents = positiveInteger(value.estimated_amount_cents);
+  if (
+    availableUnitCount === null
+    || selectedUnitCount === null
+    || selectedUnitCount > availableUnitCount
+    || unitPriceCents === null
+    || estimatedAmountCents !== selectedUnitCount * unitPriceCents
+  ) return null;
+  return { availableUnitCount, selectedUnitCount, unitPriceCents, estimatedAmountCents };
+}
+
 function percent(value) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 && number <= 100 ? number : null;

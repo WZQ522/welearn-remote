@@ -1,5 +1,5 @@
 import { randomToken, SupabaseSubmissionApi } from "./api.js?v=account-tasks-v1";
-import { batchScoreSummary, batchStatus, groupSubmissions } from "./task-model.js?v=account-scores-v1";
+import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "./task-model.js?v=unit-summary-v1";
 
 const CLIENT_KEY = "unified-remote-client-id-v1";
 const AUTH_KEY = "unified-remote-auth-v1";
@@ -150,6 +150,10 @@ function formatTime(value) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "时间未知";
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(date);
+}
+
+function formatMoney(cents) {
+  return `¥${(cents / 100).toFixed(2)}`;
 }
 
 function showAuthView(view, { updateHistory = false } = {}) {
@@ -342,6 +346,12 @@ function renderTask(submission) {
   card.querySelector(".progress-track").value = progress.percent;
   card.querySelector(".completed-count").textContent = `完成 ${progress.completed}`;
   card.querySelector(".failed-count").textContent = `失败 ${progress.failed}`;
+  const unitSummary = submissionUnitSummary(submission);
+  if (unitSummary) {
+    card.querySelector(".available-unit-count").textContent = `${unitSummary.availableUnitCount} 个`;
+    card.querySelector(".selected-unit-count").textContent = `${unitSummary.selectedUnitCount} 个`;
+    card.querySelector(".estimated-unit-charge").textContent = formatMoney(unitSummary.estimatedAmountCents);
+  }
   card.querySelector(".task-message").textContent = messageFor(submission);
   card.querySelector(".attempt-count").textContent = `执行次数 ${submission.attempt_count || 0}`;
 

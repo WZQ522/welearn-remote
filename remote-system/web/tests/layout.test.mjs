@@ -63,6 +63,15 @@ test("every task card exposes independent cancel and delete actions", () => {
   assert.match(app, /api\.removeMine\(submission\.id/);
 });
 
+test("every account task reserves a stable row for recognized unit count and estimated charge", () => {
+  assert.match(html, /class="unit-summary-row"/);
+  assert.match(html, /class="available-unit-count"/);
+  assert.match(html, /class="selected-unit-count"/);
+  assert.match(html, /class="estimated-unit-charge"/);
+  assert.match(app, /submissionUnitSummary\(submission\)/);
+  assert.match(css, /\.unit-summary-row/);
+});
+
 test("task history is account-scoped instead of device-scoped", () => {
   assert.doesNotMatch(html, /id="clearButton"/);
   assert.match(html, /id="taskList"/);
