@@ -578,11 +578,7 @@ function renderTask(submission) {
   remove.addEventListener("click", () => deleteSubmission(submission));
 
   const retry = card.querySelector(".retry-button");
-  retry.hidden = !(
-    ["failed", "canceled"].includes(submission.status)
-    || ["needs_action", "partial", "failed"].includes(submission.execution_status)
-  );
-  retry.addEventListener("click", () => retrySubmission(submission));
+  retry.hidden = true;
   return card;
 }
 

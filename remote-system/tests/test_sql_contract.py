@@ -47,6 +47,15 @@ UNIT_SUMMARY_SQL = (
 BILLING_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0015_wallet_billing_and_profile.sql"
 ).read_text(encoding="utf-8")
+ADMIN_HELPER_HOTFIX_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0016_remote_admin_helper.sql"
+).read_text(encoding="utf-8")
+SUBMITTER_CLAIM_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0017_submission_owner_projection.sql"
+).read_text(encoding="utf-8")
+RETENTION_SQL = (
+    Path(__file__).resolve().parents[1] / "supabase/migrations/0018_short_submission_retention.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
@@ -323,6 +332,59 @@ class SQLContractTests(unittest.TestCase):
             self.assertIn(f"function public.{name}", BILLING_SQL)
         self.assertIn("revoke all on table public.wallet_transactions from anon, authenticated", BILLING_SQL)
         self.assertIn("revoke all on table public.recharge_requests from anon, authenticated", BILLING_SQL)
+
+    def test_wallet_admin_helper_is_defined_before_admin_rpcs_and_hotfix_is_idempotent(self) -> None:
+        helper = "function public.is_remote_admin(p_session_token text)"
+        self.assertIn(helper, BILLING_SQL)
+        self.assertLess(BILLING_SQL.index(helper), BILLING_SQL.index("function public.admin_list_recharge_requests"))
+        self.assertIn("create or replace function public.is_remote_admin", ADMIN_HELPER_HOTFIX_SQL)
+        self.assertIn("public.current_remote_admin_id(p_session_token) is not null", ADMIN_HELPER_HOTFIX_SQL)
+        self.assertIn(
+            "revoke all on function public.is_remote_admin(text) from public, anon, authenticated",
+            ADMIN_HELPER_HOTFIX_SQL,
+        )
+
+    def test_agent_claim_projects_the_website_submitter_without_exposing_credentials(self) -> None:
+        for migration in (SQL, LIVE_PROGRESS_SQL, SUBMITTER_CLAIM_SQL):
+            self.assertIn("'submitted_by'", migration)
+            self.assertIn("from public.remote_users", migration)
+            self.assertNotIn("password_hash", migration.split("'submitted_by'", 1)[1].split(");", 1)[0])
+
+    def test_terminal_submission_credentials_are_redacted(self) -> None:
+        self.assertIn("alter column raw_text drop not null", RETENTION_SQL)
+        self.assertIn("status in ('pending', 'processing')", RETENTION_SQL)
+        self.assertIn("and char_length(raw_text) between 1 and 200000", RETENTION_SQL)
+        self.assertIn("status in ('completed', 'failed', 'canceled') and raw_text is null", RETENTION_SQL)
+        self.assertIn("validate constraint remote_submissions_raw_text_check", RETENTION_SQL)
+        self.assertIn("new.status in ('completed', 'failed', 'canceled')", RETENTION_SQL)
+        self.assertIn("new.raw_text := null", RETENTION_SQL)
+        self.assertIn("before insert or update of status", RETENTION_SQL)
+
+    def test_short_retention_deletes_canceled_and_three_day_history(self) -> None:
+        self.assertIn("new.status = 'canceled'", RETENTION_SQL)
+        self.assertIn("delete from public.remote_submissions where id = new.id", RETENTION_SQL)
+        self.assertIn("status in ('completed', 'failed')", RETENTION_SQL)
+        self.assertIn("now() - interval '3 days'", RETENTION_SQL)
+        self.assertIn("welearn-short-submission-retention", RETENTION_SQL)
+        self.assertIn("'17 * * * *'", RETENTION_SQL)
+
+    def test_retention_cleanup_is_private_and_billing_ledger_is_independent(self) -> None:
+        self.assertIn("function public.cleanup_remote_submission_retention()", RETENTION_SQL)
+        self.assertIn(
+            "revoke all on function public.cleanup_remote_submission_retention()\n    from public, anon, authenticated",
+            RETENTION_SQL,
+        )
+        self.assertIn(
+            "grant execute on function public.cleanup_remote_submission_retention()\n    to service_role",
+            RETENTION_SQL,
+        )
+        self.assertIn(
+            "submission_id uuid references public.remote_submissions(id) on delete set null",
+            BILLING_SQL,
+        )
+
+    def test_terminal_rows_cannot_retry_without_redacted_input(self) -> None:
+        self.assertEqual(RETENTION_SQL.count("and submission.raw_text is not null"), 2)
 
 
 if __name__ == "__main__":

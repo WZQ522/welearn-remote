@@ -28,6 +28,10 @@ flowchart LR
 - `supabase/migrations/0012_receipt_score_summary_projection.sql`: applies the same score-only projection to the legacy receipt-token status endpoint.
 - `supabase/migrations/0013_auth_rate_limits.sql`: adds database-side limits for repeated login and invitation attempts.
 - `supabase/migrations/0014_unit_summary_projection.sql`: stores the desktop's validated actual/selected unit counts during recognition and exposes only that quote to the signed-in website.
+- `supabase/migrations/0015_wallet_billing_and_profile.sql`: adds per-account wallets, recharge requests, atomic task charging/refunds, and profile/admin billing RPCs.
+- `supabase/migrations/0016_remote_admin_helper.sql`: restores the private admin-session helper required by the wallet administration RPCs.
+- `supabase/migrations/0017_submission_owner_projection.sql`: includes the website submitter username in the service-role Agent claim payload for desktop classification.
+- `supabase/migrations/0018_short_submission_retention.sql`: clears submitted credential text at terminal status, deletes canceled tasks immediately, deletes completed/failed task rows after 3 days, and schedules hourly cleanup without deleting wallet ledger entries.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -36,7 +40,7 @@ flowchart LR
 ## 1. Supabase
 
 1. Create a Supabase Free project.
-2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0014_unit_summary_projection.sql` in numeric order in the Supabase SQL Editor.
+2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0018_short_submission_retention.sql` in numeric order in the Supabase SQL Editor.
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 
@@ -44,9 +48,9 @@ The browser has no direct table permissions. A user must register with a current
 
 The database stores only a SHA-256 digest of session and receipt tokens. Submission RPCs require both the session token and receipt token, and check the submission's `user_id` before returning or changing a task.
 
-Task history belongs to the signed-in website account and is stored in Supabase PostgreSQL, so the same account sees it from mobile and desktop browsers. Each non-empty line in a new batch is a separate database row with its own status, retry, cancel, delete, progress, and result fields. The browser keeps only the session token, username, admin flag, and a random client ID in `localStorage`; it does not use device-local task receipts as history. The Agent separately keeps each attempt's `input.json`, `result.json`, `stdout.log`, and `stderr.log` under `AGENT_WORK_DIR` (default `agent/work`) on the computer. No automatic retention cleanup is configured yet.
+Task history belongs to the signed-in website account and is stored in Supabase PostgreSQL, so the same account sees it from mobile and desktop browsers. Each non-empty line in a new batch is a separate database row with its own status, cancel, delete, progress, and result fields. The browser requests only the latest 50 task rows and keeps only the session token, username, admin flag, and a random client ID in `localStorage`; it does not use device-local task receipts as history. The Agent separately keeps each attempt's `input.json`, `result.json`, `stdout.log`, and `stderr.log` under `AGENT_WORK_DIR` (default `agent/work`) on the computer.
 
-The submitted `raw_text` is required by the desktop processor contract and is stored in Supabase for each account task. It can contain the submitted platform credential, while the account list RPC deliberately omits `raw_text` and `result_payload` from browser responses.
+The submitted `raw_text` is required only while a task is pending or processing. Migration `0018` sets it to `NULL` immediately when a task completes or fails, deletes a canceled task immediately, and deletes completed/failed rows (including their score summary) after 3 days. The hourly cleanup job also applies this policy to older rows. Because terminal credentials are redacted, failed tasks must be submitted again instead of retried in place. Wallet transactions remain in the independent billing ledger; their `submission_id` becomes `NULL` through `ON DELETE SET NULL` when task history expires.
 
 To issue codes manually, use the SQL Editor or service-role administration path:
 

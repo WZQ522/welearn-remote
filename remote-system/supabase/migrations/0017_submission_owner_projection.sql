@@ -1,47 +1,5 @@
 begin;
 
-create or replace function public.agent_update_submission_progress(
-    p_submission_id uuid,
-    p_agent_id text,
-    p_execution_status text,
-    p_task_total integer,
-    p_task_completed integer,
-    p_task_failed integer,
-    p_result_message text default null
-)
-returns boolean
-language plpgsql
-security definer
-set search_path = public, extensions
-as $$
-declare
-    changed integer := 0;
-begin
-    if p_execution_status not in ('waiting', 'running', 'needs_action') then
-        raise exception 'invalid_execution_status';
-    end if;
-    if p_task_total < 0 or p_task_completed < 0 or p_task_failed < 0
-       or p_task_completed + p_task_failed > p_task_total then
-        raise exception 'invalid_task_counts';
-    end if;
-
-    update public.remote_submissions as submission
-    set execution_status = p_execution_status,
-        task_total = p_task_total,
-        task_completed = p_task_completed,
-        task_failed = p_task_failed,
-        result_message = left(coalesce(p_result_message, ''), 2000),
-        heartbeat_at = now(),
-        updated_at = now()
-    where submission.id = p_submission_id
-      and submission.agent_id = trim(p_agent_id)
-      and submission.status = 'processing'
-      and submission.cancel_requested = false;
-    get diagnostics changed = row_count;
-    return changed = 1;
-end;
-$$;
-
 create or replace function public.claim_next_submission_excluding(
     p_agent_id text,
     p_excluded_submission_ids uuid[] default '{}'::uuid[]
@@ -119,9 +77,7 @@ begin
 end;
 $$;
 
-revoke all on function public.agent_update_submission_progress(uuid, text, text, integer, integer, integer, text) from public;
 revoke all on function public.claim_next_submission_excluding(text, uuid[]) from public;
-grant execute on function public.agent_update_submission_progress(uuid, text, text, integer, integer, integer, text) to service_role;
 grant execute on function public.claim_next_submission_excluding(text, uuid[]) to service_role;
 
 commit;

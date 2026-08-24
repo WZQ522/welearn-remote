@@ -1,6 +1,6 @@
 # Verification record
 
-Date: 2026-08-18
+Date: 2026-08-24
 
 ## Delivered behavior
 
@@ -16,6 +16,7 @@ Date: 2026-08-18
 - The admin console rotates today's unused invitation codes to a fixed set of 10, retains consumed-code history with the consuming account, and lists all registered accounts without password hashes.
 - Admins can reset ordinary-account passwords to `11111111` or delete ordinary accounts; admin accounts and the current admin session are protected.
 - The score-history and legacy receipt-status RPCs project only `score_summary`; neither returns the full processor result payload to the browser.
+- Migration `0018` redacts `raw_text` immediately for completed/failed tasks, deletes canceled rows immediately, removes completed/failed rows after 3 days, retains billing ledger rows via `ON DELETE SET NULL`, and the web requests at most 50 recent task rows.
 
 ## Test commands
 
@@ -28,12 +29,12 @@ npm test --prefix remote-system/web
 Literal summary, exit status `0`:
 
 ```text
-Ran 9 tests in 0.175s
+Ran 9 tests in 0.173s
 OK
-Ran 23 tests in 0.001s
+Ran 34 tests in 0.001s
 OK
-tests 24
-pass 24
+tests 30
+pass 30
 fail 0
 ```
 
@@ -64,9 +65,9 @@ The preflight used fixture values and did not contact Supabase.
 - Mobile preview: `../artifacts/remote-system-logic-restore-20260816/web-mobile.png`
 - Legacy cloud export: retained outside this repository
 
-## External verification still required
+## External verification
 
-- The live Supabase project still has the older migrations active; `0004_admin_console_and_invitation_rotation.sql` must be run in the Supabase SQL Editor. A live RPC probe returned `404` for `admin_list_remote_users`, confirming that the new database function is not deployed yet.
-- Run migrations `0001` through `0013` in order before publishing the matching web build. `0011_score_summary_projection.sql` and `0012_receipt_score_summary_projection.sql` remove the full processor payload from browser responses; `0013_auth_rate_limits.sql` adds database-side login and registration throttling.
+- The live Supabase project has migrations through `0017_submission_owner_projection.sql`. On 2026-08-20, the claim-function definition was verified to contain `submitted_by`; anonymous admin probes reached the normal `admin_required` guard, while direct execution of the private `is_remote_admin` helper was denied.
+- Run migrations `0001` through `0018` in order before publishing the matching desktop/web builds. `0011` and `0012` keep processor payloads private, `0013` rate-limits authentication attempts, `0015`/`0016` provide wallet billing and its private admin-session helper, `0017` supplies the website submitter name only to the service-role Agent claim, and `0018` enforces short task retention.
 - GitHub Pages preview deployment succeeded in workflow `31950231672` at `https://wzq522.github.io/welearn-remote/`.
 - Desktop width `1280` and mobile width `390` were rendered in the local browser. Both reported zero horizontal overflow; the mobile input counter changed from `0` to `2` for two non-empty lines.

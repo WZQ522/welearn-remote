@@ -148,7 +148,7 @@ export class SupabaseSubmissionApi {
     });
   }
 
-  listMine(sessionToken, limit = 5000) {
+  listMine(sessionToken, limit = 50) {
     return this.rpc("list_my_submissions", {
       p_session_token: sessionToken,
       p_limit: limit,

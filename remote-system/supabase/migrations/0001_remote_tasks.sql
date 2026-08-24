@@ -585,6 +585,11 @@ begin
     return jsonb_build_object(
         'id', selected_submission.id,
         'raw_text', selected_submission.raw_text,
+        'submitted_by', (
+            select user_record.username
+            from public.remote_users as user_record
+            where user_record.id = selected_submission.user_id
+        ),
         'line_count', selected_submission.line_count,
         'attempt_count', selected_submission.attempt_count,
         'created_at', selected_submission.created_at

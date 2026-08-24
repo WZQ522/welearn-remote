@@ -189,7 +189,7 @@ test("account task operations require only the signed-in session and task id", a
     "retry_my_submission",
     "delete_my_submission",
   ]);
-  assert.deepEqual(requests[0].body, { p_session_token: sessionToken, p_limit: 5000 });
+  assert.deepEqual(requests[0].body, { p_session_token: sessionToken, p_limit: 50 });
   for (const request of requests.slice(1)) {
     assert.deepEqual(request.body, { p_submission_id: "submission-1", p_session_token: sessionToken });
     assert.equal("p_view_token" in request.body, false);
