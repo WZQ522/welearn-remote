@@ -17,7 +17,7 @@ if (!allowUnconfigured && (supabaseAnonKey.length < 20 || /YOUR_|SERVICE_ROLE/i.
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-for (const file of ["index.html", "styles.css", "app.js", "api.js", "task-model.js", "_headers"]) {
+for (const file of ["index.html", "styles.css", "app.js", "api.js", "auth-errors.js", "task-model.js", "_headers"]) {
   await cp(path.join(root, file), path.join(output, file));
 }
 

@@ -85,6 +85,9 @@ test("admin console can review recharge requests and adjust account balances", (
 test("admin console shows queue capacity and online agents", () => {
   assert.match(html, /id="adminQueueMetrics"/);
   assert.match(app, /api\.adminGetQueueMetrics\(/);
+  assert.match(app, /isMissingAdminMetricsMigration\(metricsResult\.reason\)/);
+  assert.match(app, /settledResultsHaveAuthError\(results\)/);
+  assert.doesNotMatch(app, /invalid session\|session\/i/);
   assert.match(app, /在线 Agent/);
   assert.match(css, /\.queue-metrics-grid/);
 });

@@ -1,5 +1,6 @@
-import { randomToken, SupabaseSubmissionApi } from "./api.js?v=capacity-v2";
-import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "./task-model.js?v=capacity-v2";
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=admin-session-fix-v1";
+import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "./task-model.js?v=admin-session-fix-v1";
+import { isAuthError, isMissingAdminMetricsMigration, settledResultsHaveAuthError } from "./auth-errors.js?v=admin-session-fix-v1";
 
 const CLIENT_KEY = "unified-remote-client-id-v1";
 const AUTH_KEY = "unified-remote-auth-v1";
@@ -128,10 +129,6 @@ function friendlyError(error) {
   return messages.find(([code]) => message.includes(code))?.[1] || message;
 }
 
-function isAuthError(error) {
-  return /login_required|invalid session|session/i.test(String(error?.message || ""));
-}
-
 function statusInfo(submission) {
   if (submission.status === "canceled") return { label: "已取消", tone: "failed" };
   if (submission.status === "failed" || submission.execution_status === "failed") return { label: "失败", tone: "failed" };
@@ -202,7 +199,7 @@ function formatDuration(totalSeconds) {
   return `${Math.floor(seconds / 3600)} 小时 ${Math.floor((seconds % 3600) / 60)} 分`;
 }
 
-function renderAdminQueueMetrics(metrics) {
+function renderAdminQueueMetrics(metrics, { statusMessage = "" } = {}) {
   elements.adminQueueMetrics.replaceChildren();
   const values = [
     ["等待任务", metrics?.pending ?? 0],
@@ -227,9 +224,9 @@ function renderAdminQueueMetrics(metrics) {
   const agents = Array.isArray(metrics?.online_agents) ? metrics.online_agents : [];
   const agentLine = document.createElement("p");
   agentLine.className = "queue-agent-line";
-  agentLine.textContent = agents.length
+  agentLine.textContent = statusMessage || (agents.length
     ? `在线 Agent：${agents.map(agent => `${agent.agent_id}（${agent.active_tasks}/${agent.worker_count}）`).join("、")}`
-    : "在线 Agent：暂无";
+    : "在线 Agent：暂无");
   elements.adminQueueMetrics.append(grid, agentLine);
 }
 
@@ -456,6 +453,13 @@ async function refreshAdminConsole({ successMessage = "" } = {}) {
   ]);
   if (auth?.sessionToken !== activeSession) return;
 
+  const results = [codesResult, usersResult, rechargeResult, metricsResult];
+  if (settledResultsHaveAuthError(results)) {
+    saveAuth(null);
+    elements.authMessage.textContent = "登录状态已失效，请重新登录";
+    return;
+  }
+
   const errors = [];
   if (codesResult.status === "fulfilled") {
     renderAdminCodes(Array.isArray(codesResult.value) ? codesResult.value : []);
@@ -474,13 +478,10 @@ async function refreshAdminConsole({ successMessage = "" } = {}) {
   }
   if (metricsResult.status === "fulfilled") {
     renderAdminQueueMetrics(metricsResult.value || {});
+  } else if (isMissingAdminMetricsMigration(metricsResult.reason)) {
+    renderAdminQueueMetrics({}, { statusMessage: "队列监控等待数据库迁移 0019" });
   } else {
     errors.push(`队列监控：${friendlyError(metricsResult.reason)}`);
-  }
-  if (errors.some(error => /登录状态已失效|login_required|invalid session|session/i.test(error))) {
-    saveAuth(null);
-    elements.authMessage.textContent = "登录状态已失效，请重新登录";
-    return;
   }
   elements.adminMessage.textContent = errors.length
     ? `读取失败：${errors.join("；")}`

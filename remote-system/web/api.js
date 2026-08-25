@@ -235,7 +235,10 @@ export class SupabaseSubmissionApi {
       }
       if (!response.ok) {
         const message = data?.message || data?.error || `HTTP ${response.status}`;
-        throw new Error(message);
+        const requestError = new Error(message);
+        if (data?.code) requestError.code = String(data.code);
+        requestError.status = response.status;
+        throw requestError;
       }
       return data;
     } catch (error) {

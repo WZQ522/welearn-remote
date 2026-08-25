@@ -24,6 +24,7 @@ test("build injects public config without a service-role key", async () => {
   assert.match(config, /fixture-anon-key/);
   assert.doesNotMatch(config, /must-not-appear/);
   assert.equal((await stat(path.join(root, "dist", "index.html"))).isFile(), true);
+  assert.equal((await stat(path.join(root, "dist", "auth-errors.js"))).isFile(), true);
   assert.equal((await stat(path.join(root, "dist", "task-model.js"))).isFile(), true);
 });
 
