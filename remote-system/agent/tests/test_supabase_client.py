@@ -64,6 +64,24 @@ class SupabaseAgentClientTests(unittest.TestCase):
         self.assertTrue(captured["url"].endswith("/rest/v1/rpc/issue_invitation_codes"))
         self.assertEqual(captured["body"], {"p_count": 2})
 
+    def test_agent_status_rpc_reports_capacity_without_submission_secrets(self) -> None:
+        captured = {}
+
+        def fake_open(request, timeout):
+            captured["url"] = request.full_url
+            captured["body"] = json.loads(request.data)
+            return FakeResponse(True)
+
+        client = SupabaseAgentClient("https://project.supabase.co", "s" * 40)
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            reported = client.report_status("agent-1", 4, 2, True)
+        self.assertTrue(reported)
+        self.assertTrue(captured["url"].endswith("/rest/v1/rpc/agent_report_status"))
+        self.assertEqual(
+            captured["body"],
+            {"p_agent_id": "agent-1", "p_worker_count": 4, "p_active_tasks": 2, "p_online": True},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

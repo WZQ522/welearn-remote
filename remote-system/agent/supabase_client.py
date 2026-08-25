@@ -52,6 +52,25 @@ class SupabaseAgentClient:
             )
         )
 
+    def report_status(
+        self,
+        agent_id: str,
+        worker_count: int,
+        active_tasks: int,
+        online: bool = True,
+    ) -> bool:
+        return bool(
+            self._rpc(
+                "agent_report_status",
+                {
+                    "p_agent_id": agent_id,
+                    "p_worker_count": worker_count,
+                    "p_active_tasks": active_tasks,
+                    "p_online": online,
+                },
+            )
+        )
+
     def report_result(self, submission_id: str, agent_id: str, result: dict[str, Any]) -> bool:
         return bool(
             self._rpc(

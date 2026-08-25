@@ -228,7 +228,7 @@ function renderAdminQueueMetrics(metrics) {
   const agentLine = document.createElement("p");
   agentLine.className = "queue-agent-line";
   agentLine.textContent = agents.length
-    ? `在线 Agent：${agents.map(agent => `${agent.agent_id}（${agent.active_tasks} 个任务）`).join("、")}`
+    ? `在线 Agent：${agents.map(agent => `${agent.agent_id}（${agent.active_tasks}/${agent.worker_count}）`).join("、")}`
     : "在线 Agent：暂无";
   elements.adminQueueMetrics.append(grid, agentLine);
 }

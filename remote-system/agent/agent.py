@@ -115,6 +115,38 @@ class HeartbeatMonitor:
                 print(f"heartbeat warning: {error}", file=sys.stderr, flush=True)
 
 
+class AgentStatusMonitor:
+    def __init__(self, agent: "TaskAgent") -> None:
+        self.agent = agent
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._run, name="agent-status", daemon=True)
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+        self.thread.join(timeout=2)
+        self._report(online=False)
+
+    def _run(self) -> None:
+        self._report(online=True)
+        interval = min(30.0, max(5.0, self.agent.config.heartbeat_interval))
+        while not self.stop_event.wait(interval):
+            self._report(online=True)
+
+    def _report(self, online: bool) -> None:
+        try:
+            self.agent.client.report_status(
+                self.agent.config.agent_id,
+                self.agent.config.worker_count,
+                self.agent.active_submission_count(),
+                online,
+            )
+        except SupabaseError as error:
+            print(f"agent status warning: {error}", file=sys.stderr, flush=True)
+
+
 def normalized_processor_result(value: Any, fallback_total: int) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ProcessorError("Processor result must be a JSON object")
@@ -231,8 +263,13 @@ class TaskAgent:
         with self._claim_lock:
             self._active_submission_ids.discard(task_id)
 
+    def active_submission_count(self) -> int:
+        with self._claim_lock:
+            return len(self._active_submission_ids)
+
     def run_forever(self, stop_event: threading.Event | None = None) -> None:
         stop = stop_event or threading.Event()
+        status_monitor = AgentStatusMonitor(self)
         workers = [
             threading.Thread(
                 target=self._worker_loop,
@@ -246,6 +283,7 @@ class TaskAgent:
             f"agent {self.config.agent_id} started with {self.config.worker_count} workers",
             flush=True,
         )
+        status_monitor.start()
         for worker in workers:
             worker.start()
         try:
@@ -255,6 +293,7 @@ class TaskAgent:
             stop.set()
             for worker in workers:
                 worker.join(timeout=max(1.0, self.config.poll_interval + 1))
+            status_monitor.stop()
 
     def _worker_loop(self, stop_event: threading.Event, worker_number: int) -> None:
         delay = self.config.poll_interval

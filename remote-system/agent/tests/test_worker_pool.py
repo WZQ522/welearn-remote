@@ -21,12 +21,18 @@ class QueueCloudClient:
         self._lock = threading.Lock()
         self.stop_event = stop_event
         self.completed: list[str] = []
+        self.status_updates: list[tuple[int, int, bool]] = []
 
     def claim_next(self, agent_id: str, excluded_submission_ids=()):
         with self._lock:
             return self._tasks.pop(0) if self._tasks else None
 
     def heartbeat(self, task_id: str, agent_id: str) -> bool:
+        return True
+
+    def report_status(self, agent_id: str, worker_count: int, active_tasks: int, online: bool = True) -> bool:
+        with self._lock:
+            self.status_updates.append((worker_count, active_tasks, online))
         return True
 
     def report_result(self, task_id: str, agent_id: str, result) -> bool:
@@ -126,6 +132,8 @@ class WorkerPoolTests(unittest.TestCase):
         TaskAgent(cloud, adapter, config(2)).run_forever(stop)
         self.assertCountEqual(cloud.completed, ["a", "b"])
         self.assertEqual(adapter.maximum_active, 2)
+        self.assertTrue(cloud.status_updates[0][2])
+        self.assertFalse(cloud.status_updates[-1][2])
 
     def test_same_account_is_serialized_across_workers(self) -> None:
         stop = threading.Event()

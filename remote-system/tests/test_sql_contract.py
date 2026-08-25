@@ -84,6 +84,13 @@ class SQLContractTests(unittest.TestCase):
         self.assertIn("'oldest_pending_seconds'", function_sql)
         self.assertNotIn("raw_text", function_sql)
         self.assertNotIn("result_payload", function_sql)
+
+    def test_idle_agent_status_has_a_private_service_role_heartbeat(self) -> None:
+        self.assertIn("table if not exists public.remote_agent_status", ACCOUNT_LEASE_SQL)
+        self.assertIn("function public.agent_report_status", ACCOUNT_LEASE_SQL)
+        self.assertIn("grant execute on function public.agent_report_status", ACCOUNT_LEASE_SQL)
+        self.assertIn("to service_role", ACCOUNT_LEASE_SQL)
+        self.assertIn("agent.last_seen_at >= now() - interval '2 minutes'", ACCOUNT_LEASE_SQL)
     def test_public_clients_use_rpc_instead_of_direct_table_access(self) -> None:
         self.assertIn("alter table public.remote_submissions enable row level security", SQL)
         self.assertIn("revoke all on table public.remote_submissions from anon, authenticated", SQL)

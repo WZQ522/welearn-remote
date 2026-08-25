@@ -64,6 +64,61 @@ create index if not exists remote_submissions_active_account_idx
     on public.remote_submissions (account_lock_key, heartbeat_at desc)
     where status = 'processing' and account_lock_key is not null;
 
+create table if not exists public.remote_agent_status (
+    agent_id text primary key check (char_length(agent_id) between 1 and 128),
+    worker_count integer not null check (worker_count between 1 and 4),
+    active_tasks integer not null default 0 check (active_tasks between 0 and 4),
+    online boolean not null default true,
+    started_at timestamptz not null default now(),
+    last_seen_at timestamptz not null default now()
+);
+
+alter table public.remote_agent_status enable row level security;
+revoke all on table public.remote_agent_status from anon, authenticated;
+grant all on table public.remote_agent_status to service_role;
+
+create or replace function public.agent_report_status(
+    p_agent_id text,
+    p_worker_count integer,
+    p_active_tasks integer,
+    p_online boolean default true
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+    if p_agent_id is null or char_length(trim(p_agent_id)) not between 1 and 128 then
+        raise exception 'invalid_agent_id';
+    end if;
+    if p_worker_count is null or p_worker_count not between 1 and 4 then
+        raise exception 'invalid_worker_count';
+    end if;
+    if p_active_tasks is null or p_active_tasks not between 0 and p_worker_count then
+        raise exception 'invalid_active_tasks';
+    end if;
+    insert into public.remote_agent_status (
+        agent_id, worker_count, active_tasks, online, started_at, last_seen_at
+    ) values (
+        trim(p_agent_id), p_worker_count, p_active_tasks, coalesce(p_online, true), now(), now()
+    )
+    on conflict (agent_id) do update
+    set worker_count = excluded.worker_count,
+        active_tasks = excluded.active_tasks,
+        online = excluded.online,
+        started_at = case
+            when public.remote_agent_status.online = false and excluded.online = true then now()
+            else public.remote_agent_status.started_at
+        end,
+        last_seen_at = now();
+    return true;
+end;
+$$;
+
+revoke all on function public.agent_report_status(text, integer, integer, boolean) from public, anon, authenticated;
+grant execute on function public.agent_report_status(text, integer, integer, boolean) to service_role;
+
 create or replace function public.claim_next_submission_excluding(
     p_agent_id text,
     p_excluded_submission_ids uuid[] default '{}'::uuid[]
@@ -222,21 +277,14 @@ begin
             select jsonb_agg(
                 jsonb_build_object(
                     'agent_id', agent.agent_id,
+                    'worker_count', agent.worker_count,
                     'active_tasks', agent.active_tasks,
-                    'last_heartbeat_at', agent.last_heartbeat_at
+                    'last_seen_at', agent.last_seen_at
                 ) order by agent.agent_id
             )
-            from (
-                select
-                    submission.agent_id,
-                    count(*)::integer as active_tasks,
-                    max(submission.heartbeat_at) as last_heartbeat_at
-                from public.remote_submissions as submission
-                where submission.status = 'processing'
-                  and submission.agent_id is not null
-                  and submission.heartbeat_at >= now() - interval '5 minutes'
-                group by submission.agent_id
-            ) as agent
+            from public.remote_agent_status as agent
+            where agent.online = true
+              and agent.last_seen_at >= now() - interval '2 minutes'
         ), '[]'::jsonb)
     ) into metrics
     from public.remote_submissions;

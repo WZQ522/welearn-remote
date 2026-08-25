@@ -35,6 +35,9 @@ class QueueLoadClient:
     def heartbeat(self, task_id: str, agent_id: str) -> bool:
         return True
 
+    def report_status(self, agent_id: str, worker_count: int, active_tasks: int, online: bool = True) -> bool:
+        return True
+
     def report_result(self, task_id: str, agent_id: str, result) -> bool:
         with self._lock:
             started = self._claimed_at.pop(task_id)

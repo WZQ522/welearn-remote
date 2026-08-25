@@ -30,6 +30,9 @@ class FakeCloudClient:
     def heartbeat(self, task_id: str, agent_id: str) -> bool:
         return True
 
+    def report_status(self, agent_id: str, worker_count: int, active_tasks: int, online: bool = True) -> bool:
+        return True
+
     def report_result(self, task_id: str, agent_id: str, result) -> bool:
         self.completed = (task_id, agent_id, result)
         return True
