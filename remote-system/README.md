@@ -32,6 +32,7 @@ flowchart LR
 - `supabase/migrations/0016_remote_admin_helper.sql`: restores the private admin-session helper required by the wallet administration RPCs.
 - `supabase/migrations/0017_submission_owner_projection.sql`: includes the website submitter username in the service-role Agent claim payload for desktop classification.
 - `supabase/migrations/0018_short_submission_retention.sql`: clears submitted credential text at terminal status, deletes canceled tasks immediately, deletes completed/failed task rows after 3 days, and schedules hourly cleanup without deleting wallet ledger entries.
+- `supabase/migrations/0019_distributed_account_leases_and_metrics.sql`: serializes the same platform/account across Agent hosts, records Agent capacity heartbeats, and exposes protected queue metrics to the admin console.
 - `web/`: mobile-first batch submission and status console for GitHub Pages or Cloudflare Pages.
 - `agent/`: standard-library Python Agent for Windows.
 - `agent/processor_adapter.py`: the only module that knows how to invoke the local processor.
@@ -40,7 +41,7 @@ flowchart LR
 ## 1. Supabase
 
 1. Create a Supabase Free project.
-2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0018_short_submission_retention.sql` in numeric order in the Supabase SQL Editor.
+2. Run `supabase/migrations/0001_remote_tasks.sql` through `supabase/migrations/0019_distributed_account_leases_and_metrics.sql` in numeric order in the Supabase SQL Editor.
 3. Record the project URL, public anon key, and service-role key.
 4. Keep the service-role key only in `agent/.env` on the Windows computer.
 
