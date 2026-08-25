@@ -1,5 +1,5 @@
-import { randomToken, SupabaseSubmissionApi } from "./api.js?v=wallet-v1";
-import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "./task-model.js?v=wallet-v1";
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=capacity-v2";
+import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "./task-model.js?v=capacity-v2";
 
 const CLIENT_KEY = "unified-remote-client-id-v1";
 const AUTH_KEY = "unified-remote-auth-v1";
@@ -28,6 +28,7 @@ const elements = {
   adminUsedCount: document.querySelector("#adminUsedCount"),
   adminUserCount: document.querySelector("#adminUserCount"),
   adminUserList: document.querySelector("#adminUserList"),
+  adminQueueMetrics: document.querySelector("#adminQueueMetrics"),
   adminRechargeList: document.querySelector("#adminRechargeList"),
   adminMessage: document.querySelector("#adminMessage"),
   userSession: document.querySelector("#userSession"),
@@ -63,6 +64,7 @@ const elements = {
 
 let api = null;
 let refreshTimer = null;
+let adminRefreshTimer = null;
 let refreshRequestID = 0;
 let auth = loadAuth();
 let authView = window.location.hash === "#register" ? "register" : "login";
@@ -185,11 +187,50 @@ function setActivePage(page) {
   elements.tasksBand.hidden = !loggedIn || allowed !== "tasks";
   elements.profileBand.hidden = !loggedIn || allowed !== "profile";
   elements.adminBand.hidden = !loggedIn || !auth?.isAdmin || allowed !== "admin";
+  if (allowed !== "admin") clearTimeout(adminRefreshTimer);
   for (const button of elements.accountNavigation.querySelectorAll(".nav-button")) {
     button.classList.toggle("active", button.dataset.page === allowed);
   }
   if (allowed === "profile") refreshProfile({ quiet: true });
   if (allowed === "admin") refreshAdminConsole();
+}
+
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds) || 0);
+  if (seconds < 60) return `${Math.round(seconds)} 秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分 ${Math.round(seconds % 60)} 秒`;
+  return `${Math.floor(seconds / 3600)} 小时 ${Math.floor((seconds % 3600) / 60)} 分`;
+}
+
+function renderAdminQueueMetrics(metrics) {
+  elements.adminQueueMetrics.replaceChildren();
+  const values = [
+    ["等待任务", metrics?.pending ?? 0],
+    ["执行中", metrics?.processing ?? 0],
+    ["异常占用", metrics?.stale ?? 0],
+    ["活跃账号", metrics?.active_accounts ?? 0],
+    ["近 1 小时完成", metrics?.completed_last_hour ?? 0],
+    ["近 1 小时失败", metrics?.failed_last_hour ?? 0],
+    ["最长等待", formatDuration(metrics?.oldest_pending_seconds)],
+  ];
+  const grid = document.createElement("div");
+  grid.className = "queue-metrics-grid";
+  for (const [label, value] of values) {
+    const card = document.createElement("span");
+    const caption = document.createElement("small");
+    const result = document.createElement("strong");
+    caption.textContent = label;
+    result.textContent = String(value);
+    card.append(caption, result);
+    grid.append(card);
+  }
+  const agents = Array.isArray(metrics?.online_agents) ? metrics.online_agents : [];
+  const agentLine = document.createElement("p");
+  agentLine.className = "queue-agent-line";
+  agentLine.textContent = agents.length
+    ? `在线 Agent：${agents.map(agent => `${agent.agent_id}（${agent.active_tasks} 个任务）`).join("、")}`
+    : "在线 Agent：暂无";
+  elements.adminQueueMetrics.append(grid, agentLine);
 }
 
 function showAuthView(view, { updateHistory = false } = {}) {
@@ -406,10 +447,12 @@ async function deleteRemoteUser(user) {
 async function refreshAdminConsole({ successMessage = "" } = {}) {
   if (!api || !auth?.isAdmin) return;
   const activeSession = auth.sessionToken;
-  const [codesResult, usersResult, rechargeResult] = await Promise.allSettled([
+  clearTimeout(adminRefreshTimer);
+  const [codesResult, usersResult, rechargeResult, metricsResult] = await Promise.allSettled([
     api.adminListInvitationCodes(activeSession),
     api.adminListRemoteUsers(activeSession),
     api.adminListRechargeRequests(activeSession),
+    api.adminGetQueueMetrics(activeSession),
   ]);
   if (auth?.sessionToken !== activeSession) return;
 
@@ -429,6 +472,11 @@ async function refreshAdminConsole({ successMessage = "" } = {}) {
   } else {
     errors.push(`充值申请：${friendlyError(rechargeResult.reason)}`);
   }
+  if (metricsResult.status === "fulfilled") {
+    renderAdminQueueMetrics(metricsResult.value || {});
+  } else {
+    errors.push(`队列监控：${friendlyError(metricsResult.reason)}`);
+  }
   if (errors.some(error => /登录状态已失效|login_required|invalid session|session/i.test(error))) {
     saveAuth(null);
     elements.authMessage.textContent = "登录状态已失效，请重新登录";
@@ -437,6 +485,9 @@ async function refreshAdminConsole({ successMessage = "" } = {}) {
   elements.adminMessage.textContent = errors.length
     ? `读取失败：${errors.join("；")}`
     : successMessage;
+  if (activePage === "admin" && auth?.sessionToken === activeSession) {
+    adminRefreshTimer = setTimeout(() => refreshAdminConsole(), 5000);
+  }
 }
 
 function syncAuthViewFromLocation() {
@@ -865,6 +916,7 @@ elements.logoutButton.addEventListener("click", async () => {
     renderAdminCodes([]);
     renderAdminUsers([]);
     renderAdminRechargeRequests([]);
+    renderAdminQueueMetrics({});
     renderProfile(null);
     render();
     elements.logoutButton.disabled = false;

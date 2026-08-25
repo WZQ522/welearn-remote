@@ -74,6 +74,12 @@ export class SupabaseSubmissionApi {
     });
   }
 
+  adminGetQueueMetrics(sessionToken) {
+    return this.rpc("admin_get_queue_metrics", {
+      p_session_token: sessionToken,
+    });
+  }
+
   adminResetRemoteUserPassword(sessionToken, userId) {
     return this.rpc("admin_reset_remote_user_password", {
       p_session_token: sessionToken,

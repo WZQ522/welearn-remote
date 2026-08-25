@@ -23,7 +23,7 @@ class FakeCloudClient:
         self.completed = None
         self.failed = None
 
-    def claim_next(self, agent_id: str):
+    def claim_next(self, agent_id: str, excluded_submission_ids=()):
         task, self.task = self.task, None
         return task
 

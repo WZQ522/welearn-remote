@@ -21,8 +21,18 @@ class SupabaseAgentClient:
         self._key = service_role_key
         self._timeout = timeout
 
-    def claim_next(self, agent_id: str) -> dict[str, Any] | None:
-        result = self._rpc("claim_next_submission", {"p_agent_id": agent_id})
+    def claim_next(
+        self,
+        agent_id: str,
+        excluded_submission_ids: tuple[str, ...] = (),
+    ) -> dict[str, Any] | None:
+        result = self._rpc(
+            "claim_next_submission_excluding",
+            {
+                "p_agent_id": agent_id,
+                "p_excluded_submission_ids": list(excluded_submission_ids),
+            },
+        )
         return result if isinstance(result, dict) else None
 
     def issue_invitation_codes(self, count: int = 10) -> list[str]:

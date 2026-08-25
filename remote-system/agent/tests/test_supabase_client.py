@@ -39,10 +39,13 @@ class SupabaseAgentClientTests(unittest.TestCase):
 
         client = SupabaseAgentClient("https://project.supabase.co", "s" * 40)
         with patch("urllib.request.urlopen", side_effect=fake_open):
-            task = client.claim_next("agent-1")
+            task = client.claim_next("agent-1", ("active-1", "active-2"))
         self.assertEqual(task, {"id": "task-1"})
-        self.assertTrue(captured["url"].endswith("/rest/v1/rpc/claim_next_submission"))
-        self.assertEqual(captured["body"], {"p_agent_id": "agent-1"})
+        self.assertTrue(captured["url"].endswith("/rest/v1/rpc/claim_next_submission_excluding"))
+        self.assertEqual(
+            captured["body"],
+            {"p_agent_id": "agent-1", "p_excluded_submission_ids": ["active-1", "active-2"]},
+        )
         self.assertEqual(captured["headers"]["Apikey"], "s" * 40)
         self.assertNotIn("s" * 40, json.dumps(captured["body"]))
 

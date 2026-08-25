@@ -126,7 +126,15 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\install_startup.ps1
 ```
 
-The scheduled task starts at user logon, restarts after failures, and uses a stable `AGENT_ID`. A processing task remains in Supabase while the computer is off. After its heartbeat lease expires, the restarted Agent claims and processes it again.
+The scheduled task starts at user logon, restarts after failures, and uses a stable `AGENT_ID`. `AGENT_WORKERS` controls a bounded worker pool (default `2`, minimum `1`, maximum `4`). Different accounts can run concurrently; submissions containing the same platform/account identity are serialized inside the Agent and by the database lease across Agent hosts. A processing task remains in Supabase while the computer is off. After its heartbeat lease expires, the restarted Agent claims and processes it again.
+
+Before raising the worker count, run the offline capacity probe from the `agent` directory:
+
+```bash
+python3 load_test.py --tasks 20 --workers 4 --account-pool 20 --delay 0.1
+```
+
+The JSON result reports throughput, p50/p95 duration, duplicate claims, total concurrency, and per-account concurrency. A valid run has `duplicates: 0` and `max_concurrency_per_account: 1`.
 
 ## Processor contract
 

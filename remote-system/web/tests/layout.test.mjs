@@ -82,6 +82,13 @@ test("admin console can review recharge requests and adjust account balances", (
   assert.match(app, /api\.adminDecideRechargeRequest\(/);
 });
 
+test("admin console shows queue capacity and online agents", () => {
+  assert.match(html, /id="adminQueueMetrics"/);
+  assert.match(app, /api\.adminGetQueueMetrics\(/);
+  assert.match(app, /在线 Agent/);
+  assert.match(css, /\.queue-metrics-grid/);
+});
+
 test("every account task reserves a stable row for recognized unit count and estimated charge", () => {
   assert.match(html, /class="unit-summary-row"/);
   assert.match(html, /class="available-unit-count"/);

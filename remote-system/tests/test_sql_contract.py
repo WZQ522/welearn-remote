@@ -56,9 +56,34 @@ SUBMITTER_CLAIM_SQL = (
 RETENTION_SQL = (
     Path(__file__).resolve().parents[1] / "supabase/migrations/0018_short_submission_retention.sql"
 ).read_text(encoding="utf-8")
+ACCOUNT_LEASE_SQL = (
+    Path(__file__).resolve().parents[1]
+    / "supabase/migrations/0019_distributed_account_leases_and_metrics.sql"
+).read_text(encoding="utf-8")
 
 
 class SQLContractTests(unittest.TestCase):
+    def test_distributed_account_lease_is_derived_without_storing_passwords(self) -> None:
+        self.assertIn("function public.submission_account_lock_key", ACCOUNT_LEASE_SQL)
+        self.assertIn("before insert or update of raw_text", ACCOUNT_LEASE_SQL)
+        self.assertIn("public.hash_remote_secret", ACCOUNT_LEASE_SQL)
+        self.assertIn("account_lock_key", ACCOUNT_LEASE_SQL)
+        self.assertNotIn("'password'", ACCOUNT_LEASE_SQL.lower())
+
+    def test_distributed_claim_uses_advisory_lock_and_active_account_lease(self) -> None:
+        self.assertIn("function public.claim_next_submission_excluding", ACCOUNT_LEASE_SQL)
+        self.assertIn("pg_try_advisory_xact_lock", ACCOUNT_LEASE_SQL)
+        self.assertIn("active.account_lock_key = candidate.account_lock_key", ACCOUNT_LEASE_SQL)
+        self.assertIn("active.heartbeat_at >= now() - interval '5 minutes'", ACCOUNT_LEASE_SQL)
+        self.assertIn("for update skip locked", ACCOUNT_LEASE_SQL)
+
+    def test_admin_queue_metrics_are_session_scoped_and_hide_submission_secrets(self) -> None:
+        function_sql = ACCOUNT_LEASE_SQL.split("function public.admin_get_queue_metrics", 1)[1]
+        self.assertIn("current_remote_admin_id", function_sql)
+        self.assertIn("'online_agents'", function_sql)
+        self.assertIn("'oldest_pending_seconds'", function_sql)
+        self.assertNotIn("raw_text", function_sql)
+        self.assertNotIn("result_payload", function_sql)
     def test_public_clients_use_rpc_instead_of_direct_table_access(self) -> None:
         self.assertIn("alter table public.remote_submissions enable row level security", SQL)
         self.assertIn("revoke all on table public.remote_submissions from anon, authenticated", SQL)

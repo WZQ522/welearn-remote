@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from processor_adapter import ProcessorAdapter, ProcessorError, command_from_environment
+from submission_locks import AccountLockCancelled, SubmissionAccountLockPool, submission_account_keys
 from supabase_client import SupabaseAgentClient, SupabaseError
 
 
@@ -43,6 +44,17 @@ def numeric_env(name: str, default: float, minimum: float) -> float:
         raise ValueError(f"{name} must be numeric") from error
 
 
+def integer_env(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise ValueError(f"{name} must be an integer") from error
+    return min(max(value, minimum), maximum)
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     agent_id: str
@@ -50,6 +62,7 @@ class AgentConfig:
     heartbeat_interval: float
     processor_timeout: float
     work_root: Path
+    worker_count: int = 2
 
     @classmethod
     def load(cls) -> "AgentConfig":
@@ -62,6 +75,7 @@ class AgentConfig:
             heartbeat_interval=numeric_env("HEARTBEAT_INTERVAL_SECONDS", 30.0, 5.0),
             processor_timeout=numeric_env("PROCESSOR_TIMEOUT_SECONDS", 3600.0, 1.0),
             work_root=Path(os.environ.get("AGENT_WORK_DIR", ROOT / "work")).resolve(),
+            worker_count=integer_env("AGENT_WORKERS", 2, 1, 4),
         )
 
 
@@ -147,13 +161,17 @@ class TaskAgent:
         client: SupabaseAgentClient,
         adapter: ProcessorAdapter,
         config: AgentConfig,
+        account_locks: SubmissionAccountLockPool | None = None,
     ) -> None:
         self.client = client
         self.adapter = adapter
         self.config = config
+        self.account_locks = account_locks or SubmissionAccountLockPool()
+        self._claim_lock = threading.Lock()
+        self._active_submission_ids: set[str] = set()
 
     def run_once(self) -> bool:
-        task = self.client.claim_next(self.config.agent_id)
+        task = self._claim_next()
         if not task:
             return False
 
@@ -167,12 +185,15 @@ class TaskAgent:
         )
         monitor.start()
         try:
-            raw_result = self.adapter.process(task, should_continue=monitor.should_continue)
+            raw_text = task.get("raw_text")
+            account_keys = submission_account_keys(raw_text if isinstance(raw_text, str) else "")
+            with self.account_locks.hold(account_keys, should_continue=monitor.should_continue):
+                raw_result = self.adapter.process(task, should_continue=monitor.should_continue)
             result = normalized_processor_result(raw_result, int(task.get("line_count") or 0))
             if not self.client.report_result(task_id, self.config.agent_id, result):
                 raise SupabaseError("Cloud rejected completion report")
             print(f"reported submission {task_id}: {result['execution_status']}", flush=True)
-        except (ProcessorError, SupabaseError, OSError, ValueError) as error:
+        except (AccountLockCancelled, ProcessorError, SupabaseError, OSError, ValueError) as error:
             message = str(error) or error.__class__.__name__
             print(f"failed task {task_id}: {message}", file=sys.stderr, flush=True)
             try:
@@ -188,19 +209,66 @@ class TaskAgent:
                 print(f"failed to upload error for {task_id}: {report_error}", file=sys.stderr, flush=True)
         finally:
             monitor.stop()
+            self._release_claim(task_id)
         return True
 
-    def run_forever(self) -> None:
-        print(f"agent {self.config.agent_id} started", flush=True)
+    def _claim_next(self) -> dict[str, Any] | None:
+        # Claiming and registering are one in-process critical section. Without
+        # this, two workers can both snapshot an empty exclusion set and reclaim
+        # the same processing row under the shared agent id.
+        with self._claim_lock:
+            excluded = tuple(sorted(self._active_submission_ids))
+            task = self.client.claim_next(self.config.agent_id, excluded)
+            if not task:
+                return None
+            task_id = str(task.get("id") or "")
+            if not task_id or task_id in self._active_submission_ids:
+                raise SupabaseError("Cloud returned an invalid or duplicate submission claim")
+            self._active_submission_ids.add(task_id)
+            return task
+
+    def _release_claim(self, task_id: str) -> None:
+        with self._claim_lock:
+            self._active_submission_ids.discard(task_id)
+
+    def run_forever(self, stop_event: threading.Event | None = None) -> None:
+        stop = stop_event or threading.Event()
+        workers = [
+            threading.Thread(
+                target=self._worker_loop,
+                args=(stop, index + 1),
+                name=f"task-worker-{index + 1}",
+                daemon=True,
+            )
+            for index in range(self.config.worker_count)
+        ]
+        print(
+            f"agent {self.config.agent_id} started with {self.config.worker_count} workers",
+            flush=True,
+        )
+        for worker in workers:
+            worker.start()
+        try:
+            while not stop.wait(0.5) and any(worker.is_alive() for worker in workers):
+                pass
+        finally:
+            stop.set()
+            for worker in workers:
+                worker.join(timeout=max(1.0, self.config.poll_interval + 1))
+
+    def _worker_loop(self, stop_event: threading.Event, worker_number: int) -> None:
         delay = self.config.poll_interval
-        while True:
+        first_poll = True
+        while not stop_event.wait(0 if first_poll else delay):
+            first_poll = False
             try:
                 processed = self.run_once()
-                delay = 0.2 if processed else self.config.poll_interval
+                # Drain an existing queue immediately. The normal poll interval
+                # is restored as soon as a claim returns no work.
+                delay = 0.0 if processed else self.config.poll_interval
             except SupabaseError as error:
-                print(f"cloud warning: {error}", file=sys.stderr, flush=True)
+                print(f"worker {worker_number} cloud warning: {error}", file=sys.stderr, flush=True)
                 delay = min(max(delay * 2, self.config.poll_interval), 120.0)
-            time.sleep(delay)
 
 
 def create_agent() -> TaskAgent:

@@ -118,6 +118,7 @@ test("admin operations use the authenticated session token", async () => {
   await api.adminIssueInvitationCodes("s".repeat(64), 10);
   await api.adminListInvitationCodes("s".repeat(64));
   await api.adminListRemoteUsers("s".repeat(64));
+  await api.adminGetQueueMetrics("s".repeat(64));
   await api.adminResetRemoteUserPassword("s".repeat(64), "user-1");
   await api.adminDeleteRemoteUser("s".repeat(64), "user-2");
 
@@ -125,14 +126,16 @@ test("admin operations use the authenticated session token", async () => {
     "admin_issue_invitation_codes",
     "admin_list_invitation_codes",
     "admin_list_remote_users",
+    "admin_get_queue_metrics",
     "admin_reset_remote_user_password",
     "admin_delete_remote_user",
   ]);
   assert.deepEqual(requests[0].body, { p_session_token: "s".repeat(64), p_count: 10 });
   assert.deepEqual(requests[1].body, { p_session_token: "s".repeat(64), p_issue_date: null });
   assert.deepEqual(requests[2].body, { p_session_token: "s".repeat(64) });
-  assert.deepEqual(requests[3].body, { p_session_token: "s".repeat(64), p_target_user_id: "user-1" });
-  assert.deepEqual(requests[4].body, { p_session_token: "s".repeat(64), p_target_user_id: "user-2" });
+  assert.deepEqual(requests[3].body, { p_session_token: "s".repeat(64) });
+  assert.deepEqual(requests[4].body, { p_session_token: "s".repeat(64), p_target_user_id: "user-1" });
+  assert.deepEqual(requests[5].body, { p_session_token: "s".repeat(64), p_target_user_id: "user-2" });
 });
 
 test("receipt operations use submission RPCs and send the session token", async () => {

@@ -10,3 +10,5 @@ remote-system/agent/__pycache__/
 remote-system/agent/tests/__pycache__/
 *.pyc
 
+
+remote-system/web/.wrangler/
