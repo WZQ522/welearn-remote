@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#176b55">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self'; connect-src 'self' https://*.supabase.co; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
+  <title>统一刷课助手</title>
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="stylesheet" href="styles.css?v=remote-retry-v1">
+  <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"
+    integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu"
+    crossorigin="anonymous"></script>
+  <script src="config.js"></script>
+  <script type="module" src="app.js?v=remote-retry-v1"></script>
+</head>
+<body>
+  <header class="app-bar">
+    <div class="brand-mark" aria-hidden="true"><i data-lucide="monitor-up"></i></div>
+    <div>
+      <h1>统一刷课助手</h1>
+      <p id="connectionText">正在连接云端</p>
+    </div>
+    <button id="refreshButton" class="icon-button" type="button" title="刷新状态">
+      <i data-lucide="refresh-cw"></i><span class="sr-only">刷新状态</span>
+    </button>
+  </header>
+
+  <main>
+    <section class="account-band" aria-labelledby="accountTitle">
+      <div class="section-heading account-heading">
+        <div>
+          <p class="eyebrow">访问账户</p>
+          <h2 id="accountTitle">登录</h2>
+        </div>
+      </div>
+
+      <div id="authForms" class="auth-forms">
+        <div id="loginView" class="auth-page">
+          <form id="loginForm" class="auth-form">
+            <label for="loginUsername">用户名</label>
+            <input id="loginUsername" name="username" type="text" minlength="3" maxlength="64" autocomplete="username" required>
+            <label for="loginPassword">密码</label>
+            <input id="loginPassword" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+            <button id="loginButton" class="primary-button" type="submit">
+              <i data-lucide="log-in"></i><span>登录</span>
+            </button>
+          </form>
+          <p class="auth-switch">还没有账号？<a id="showRegisterLink" href="#register">去注册</a></p>
+        </div>
+
+        <div id="registerView" class="auth-page" hidden>
+          <form id="registerForm" class="auth-form">
+            <label for="registerUsername">用户名</label>
+            <input id="registerUsername" name="username" type="text" minlength="3" maxlength="64" pattern="[A-Za-z0-9_.@-]{3,64}" autocomplete="username" required>
+            <label for="registerPassword">密码</label>
+            <input id="registerPassword" name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+            <label for="invitationCode">邀请码</label>
+            <input id="invitationCode" name="invitationCode" type="text" minlength="32" maxlength="32" pattern="[A-Fa-f0-9]{32}" spellcheck="false" autocomplete="off" required>
+            <button id="registerButton" class="primary-button" type="submit">
+              <i data-lucide="user-plus"></i><span>注册并登录</span>
+            </button>
+          </form>
+          <p class="auth-switch">已有账号？<a id="showLoginLink" href="#">返回登录</a></p>
+        </div>
+      </div>
+
+      <div id="userSession" class="user-session" hidden>
+        <div>
+          <span class="session-label">当前账户</span>
+          <strong id="loggedUsername"></strong>
+        </div>
+        <div class="session-actions">
+          <nav id="accountNavigation" class="account-navigation" aria-label="账户页面">
+            <button class="nav-button active" type="button" data-page="tasks"><i data-lucide="list-checks"></i><span>任务</span></button>
+            <button class="nav-button" type="button" data-page="profile"><i data-lucide="user-round"></i><span>个人主页</span></button>
+            <button class="nav-button admin-nav-button" type="button" data-page="admin" hidden><i data-lucide="shield-check"></i><span>管理后台</span></button>
+          </nav>
+          <button id="logoutButton" class="secondary-button" type="button">
+            <i data-lucide="log-out"></i><span>退出登录</span>
+          </button>
+        </div>
+      </div>
+      <p id="authMessage" class="auth-message" role="status"></p>
+    </section>
+
+    <section id="adminBand" class="admin-band" aria-labelledby="adminTitle" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">管理员</p>
+          <h2 id="adminTitle">管理后台</h2>
+        </div>
+        <button id="issueInvitationButton" class="secondary-button" type="button">
+          <i data-lucide="key-round"></i><span>生成 10 个</span>
+        </button>
+      </div>
+      <div class="admin-summary" aria-label="邀请码和账号统计">
+        <span id="adminAvailableCount">可用邀请码 0</span>
+        <span id="adminUsedCount">今日已使用 0</span>
+        <span id="adminUserCount">注册账号 0</span>
+      </div>
+      <div class="admin-group">
+        <h3>队列监控</h3>
+        <div id="adminQueueMetrics" class="queue-metrics" aria-live="polite">正在读取运行状态</div>
+      </div>
+      <div class="admin-group">
+        <h3>今日邀请码</h3>
+        <div id="adminCodeList" class="admin-code-list" aria-live="polite"></div>
+      </div>
+      <div class="admin-group">
+        <h3>注册账号</h3>
+        <div id="adminUserList" class="admin-user-list" aria-live="polite"></div>
+      </div>
+      <div class="admin-group">
+        <h3>充值申请</h3>
+        <div id="adminRechargeList" class="admin-recharge-list" aria-live="polite"></div>
+      </div>
+      <p id="adminMessage" class="auth-message" role="status"></p>
+    </section>
+
+    <section id="profileBand" class="profile-band" aria-labelledby="profileTitle" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">个人账户</p>
+          <h2 id="profileTitle">个人主页</h2>
+        </div>
+        <strong id="walletBalance" class="wallet-balance">¥0.00</strong>
+      </div>
+      <div class="wallet-overview" aria-label="账户资金概览">
+        <span><small>累计消费</small><strong id="walletCharged">¥0.00</strong></span>
+        <span><small>累计退款</small><strong id="walletRefunded">¥0.00</strong></span>
+        <span><small>计费规则</small><strong>U校园 ¥0.30 / 单元</strong><strong>WeLearn ¥0.15 / 单元</strong></span>
+      </div>
+      <div class="profile-section">
+        <h3>申请充值</h3>
+        <form id="rechargeForm" class="recharge-form">
+          <label for="rechargeAmount">充值金额（元）</label>
+          <input id="rechargeAmount" name="amount" type="number" min="1" max="10000" step="0.01" inputmode="decimal" required>
+          <label for="rechargeNote">备注</label>
+          <input id="rechargeNote" name="note" type="text" maxlength="200" placeholder="选填">
+          <button id="rechargeButton" class="primary-button" type="submit"><i data-lucide="wallet-cards"></i><span>提交充值申请</span></button>
+        </form>
+        <p id="profileMessage" class="auth-message" role="status"></p>
+      </div>
+      <div class="profile-section">
+        <h3>充值记录</h3>
+        <div id="rechargeRequestList" class="ledger-list" aria-live="polite"></div>
+      </div>
+      <div class="profile-section">
+        <h3>资金明细</h3>
+        <div id="walletTransactionList" class="ledger-list" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="submitBand" class="submit-band" aria-labelledby="submitTitle" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">远程任务</p>
+          <h2 id="submitTitle">批量提交</h2>
+        </div>
+        <span class="queue-indicator"><i data-lucide="cloud"></i> 关机保留</span>
+      </div>
+
+      <form id="submissionForm">
+        <div class="raw-field">
+          <label for="rawText"><span>账号任务</span></label>
+          <p class="format-note">每行：平台 账号 密码 [课程] [单元] [正确率]</p>
+          <textarea id="rawText" name="rawText" rows="9" spellcheck="false" autocomplete="off" placeholder="u校园 账号 密码 大学英语 1234 90&#10;u校园 账号 密码 综合英语 1,2,3,4&#10;welearn 账号 密码 80" required></textarea>
+        </div>
+        <div class="form-footer">
+          <div>
+            <strong id="lineCount">已输入 0 条</strong>
+            <p id="formMessage" role="status"></p>
+          </div>
+          <button id="submitButton" class="primary-button" type="submit" disabled>
+            <i data-lucide="send"></i><span>提交到电脑</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section id="tasksBand" class="tasks-band" aria-labelledby="tasksTitle" hidden>
+      <div class="section-heading records-heading">
+        <div>
+          <p class="eyebrow">当前账户</p>
+          <h2 id="tasksTitle">账号任务记录</h2>
+        </div>
+        <div class="records-actions">
+          <span id="taskCount" class="task-count">0 批</span>
+        </div>
+      </div>
+      <div id="emptyState" class="empty-state">
+        <i data-lucide="inbox"></i>
+        <strong>还没有提交记录</strong>
+      </div>
+      <div id="taskList" class="task-list" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <template id="taskTemplate">
+    <article class="task-card">
+      <header>
+        <div>
+          <h3 class="task-title"></h3>
+          <time class="task-time"></time>
+        </div>
+        <span class="status-badge"></span>
+      </header>
+      <div class="progress-meta">
+        <span class="progress-count"></span>
+        <span class="progress-percent"></span>
+      </div>
+      <progress class="progress-track" max="100" value="0" aria-label="任务进度"></progress>
+      <div class="score-row">
+        <span class="completed-count"></span>
+        <span class="failed-count"></span>
+      </div>
+      <div class="unit-summary-row" aria-label="单元识别和任务费用">
+        <span><small>实际单元</small><strong class="available-unit-count">等待识别</strong></span>
+        <span><small>本次单元</small><strong class="selected-unit-count">等待识别</strong></span>
+        <span><small>任务费用</small><strong class="estimated-unit-charge">-</strong></span>
+      </div>
+      <p class="billing-state"></p>
+      <p class="task-message"></p>
+      <footer>
+        <span class="attempt-count"></span>
+        <div class="task-actions">
+          <button class="secondary-button retry-button" type="button" hidden>
+            <i data-lucide="rotate-ccw"></i><span>重试</span>
+          </button>
+          <button class="danger-button cancel-button" type="button" hidden>
+            <i data-lucide="x"></i><span>取消</span>
+          </button>
+          <button class="danger-button delete-button" type="button" title="删除此任务">
+            <i data-lucide="trash-2"></i><span>删除</span>
+          </button>
+        </div>
+      </footer>
+    </article>
+  </template>
+</body>
+</html>

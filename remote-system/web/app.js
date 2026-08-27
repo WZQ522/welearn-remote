@@ -1,0 +1,1080 @@
+import { randomToken, SupabaseSubmissionApi } from "./api.js?v=admin-session-fix-v1";
+import { batchScoreSummary, batchStatus, groupSubmissions, submissionUnitSummary } from "./task-model.js?v=admin-session-fix-v1";
+import { isAuthError, isMissingAdminMetricsMigration, settledResultsHaveAuthError } from "./auth-errors.js?v=admin-session-fix-v1";
+
+const CLIENT_KEY = "unified-remote-client-id-v1";
+const AUTH_KEY = "unified-remote-auth-v1";
+
+const elements = {
+  accountTitle: document.querySelector("#accountTitle"),
+  authForms: document.querySelector("#authForms"),
+  loginView: document.querySelector("#loginView"),
+  registerView: document.querySelector("#registerView"),
+  showRegisterLink: document.querySelector("#showRegisterLink"),
+  showLoginLink: document.querySelector("#showLoginLink"),
+  loginForm: document.querySelector("#loginForm"),
+  loginUsername: document.querySelector("#loginUsername"),
+  loginPassword: document.querySelector("#loginPassword"),
+  loginButton: document.querySelector("#loginButton"),
+  registerForm: document.querySelector("#registerForm"),
+  registerUsername: document.querySelector("#registerUsername"),
+  registerPassword: document.querySelector("#registerPassword"),
+  invitationCode: document.querySelector("#invitationCode"),
+  registerButton: document.querySelector("#registerButton"),
+  authMessage: document.querySelector("#authMessage"),
+  adminBand: document.querySelector("#adminBand"),
+  issueInvitationButton: document.querySelector("#issueInvitationButton"),
+  adminCodeList: document.querySelector("#adminCodeList"),
+  adminAvailableCount: document.querySelector("#adminAvailableCount"),
+  adminUsedCount: document.querySelector("#adminUsedCount"),
+  adminUserCount: document.querySelector("#adminUserCount"),
+  adminUserList: document.querySelector("#adminUserList"),
+  adminQueueMetrics: document.querySelector("#adminQueueMetrics"),
+  adminRechargeList: document.querySelector("#adminRechargeList"),
+  adminMessage: document.querySelector("#adminMessage"),
+  userSession: document.querySelector("#userSession"),
+  loggedUsername: document.querySelector("#loggedUsername"),
+  accountNavigation: document.querySelector("#accountNavigation"),
+  adminNavButton: document.querySelector(".admin-nav-button"),
+  logoutButton: document.querySelector("#logoutButton"),
+  profileBand: document.querySelector("#profileBand"),
+  walletBalance: document.querySelector("#walletBalance"),
+  walletCharged: document.querySelector("#walletCharged"),
+  walletRefunded: document.querySelector("#walletRefunded"),
+  rechargeForm: document.querySelector("#rechargeForm"),
+  rechargeAmount: document.querySelector("#rechargeAmount"),
+  rechargeNote: document.querySelector("#rechargeNote"),
+  rechargeButton: document.querySelector("#rechargeButton"),
+  rechargeRequestList: document.querySelector("#rechargeRequestList"),
+  walletTransactionList: document.querySelector("#walletTransactionList"),
+  profileMessage: document.querySelector("#profileMessage"),
+  form: document.querySelector("#submissionForm"),
+  rawText: document.querySelector("#rawText"),
+  lineCount: document.querySelector("#lineCount"),
+  submit: document.querySelector("#submitButton"),
+  message: document.querySelector("#formMessage"),
+  connection: document.querySelector("#connectionText"),
+  refresh: document.querySelector("#refreshButton"),
+  submitBand: document.querySelector("#submitBand"),
+  tasksBand: document.querySelector("#tasksBand"),
+  list: document.querySelector("#taskList"),
+  count: document.querySelector("#taskCount"),
+  empty: document.querySelector("#emptyState"),
+  template: document.querySelector("#taskTemplate"),
+};
+
+let api = null;
+let refreshTimer = null;
+let adminRefreshTimer = null;
+let refreshRequestID = 0;
+let auth = loadAuth();
+let authView = window.location.hash === "#register" ? "register" : "login";
+let activePage = "tasks";
+let profileState = null;
+const submissionState = new Map();
+const submissionSourceState = new Map();
+const retryingSubmissionIDs = new Set();
+
+function countLines(value) {
+  return value.split(/\r?\n/).filter(line => line.trim()).length;
+}
+
+function loadAuth() {
+  try {
+    const value = JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
+    return value?.sessionToken && value?.username
+      ? { sessionToken: value.sessionToken, username: value.username, isAdmin: value.isAdmin === true }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAuth(value) {
+  auth = value;
+  refreshRequestID += 1;
+  if (value) localStorage.setItem(AUTH_KEY, JSON.stringify(value));
+  else localStorage.removeItem(AUTH_KEY);
+  updateAuthUI();
+}
+
+function clientId() {
+  let value = localStorage.getItem(CLIENT_KEY);
+  if (!value) {
+    value = typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : randomToken(16);
+    localStorage.setItem(CLIENT_KEY, value);
+  }
+  return value;
+}
+
+function friendlyError(error) {
+  const message = String(error?.message || error || "请求失败");
+  const messages = [
+    ["username_taken", "用户名已存在，请换一个用户名"],
+    ["invalid_username", "用户名需为 3-64 位字母、数字、下划线、点、@ 或短横线"],
+    ["invalid_password", "密码需为 8-128 位"],
+    ["invalid_invitation_code", "邀请码无效"],
+    ["invitation_code_used", "邀请码已使用"],
+    ["invitation_code_expired", "邀请码已过期，请使用当天生成的邀请码"],
+    ["invalid_credentials", "用户名或密码不正确"],
+    ["auth_rate_limited", "尝试次数过多，请稍后再试"],
+    ["admin_required", "需要管理员权限"],
+    ["admin_target_protected", "管理员账号受保护，不能操作"],
+    ["admin_self_protected", "不能删除当前登录的管理员账号"],
+    ["remote_user_not_found", "账号不存在或已被删除"],
+    ["invalid_recharge_amount", "充值金额必须在 1 元到 10000 元之间"],
+    ["too_many_pending_recharges", "最多保留 3 条待处理充值申请"],
+    ["insufficient_balance", "账户余额不足"],
+    ["adjustment_reason_required", "调整余额时必须填写原因"],
+    ["login_required", "登录状态已失效，请重新登录"],
+  ];
+  return messages.find(([code]) => message.includes(code))?.[1] || message;
+}
+
+function statusInfo(submission) {
+  if (submission.status === "canceled") return { label: "已取消", tone: "failed" };
+  if (submission.status === "failed" || submission.execution_status === "failed") return { label: "失败", tone: "failed" };
+  if (submission.execution_status === "needs_action") return { label: "需处理", tone: "warning" };
+  if (submission.execution_status === "partial") return { label: "部分完成", tone: "warning" };
+  if (submission.execution_status === "completed") return { label: "已完成", tone: "completed" };
+  if (submission.status === "processing" || submission.execution_status === "running") return { label: "执行中", tone: "processing" };
+  return { label: "等待电脑", tone: "pending" };
+}
+
+function progressInfo(submission) {
+  const total = Math.max(0, Number(submission.task_total || submission.line_count || 0));
+  const completed = Math.max(0, Number(submission.task_completed || 0));
+  const failed = Math.max(0, Number(submission.task_failed || 0));
+  const settled = Math.min(total, completed + failed);
+  return {
+    total,
+    completed,
+    failed,
+    settled,
+    percent: total ? Math.round((settled / total) * 100) : 0,
+  };
+}
+
+function messageFor(submission) {
+  if (submission.result_message) return submission.result_message;
+  if (submission.status === "pending") return "任务已保存在云端，等待电脑 Agent 领取。";
+  if (submission.status === "processing") {
+    return submission.cancel_requested ? "已请求取消，等待电脑确认。" : "电脑已领取，统一刷课助手正在执行。";
+  }
+  if (submission.status === "failed") return submission.error_message || "本地程序执行失败。";
+  if (submission.status === "canceled") return "任务已取消。";
+  return "执行结果已上传。";
+}
+
+function isRetryableSubmission(submission) {
+  return ["failed", "canceled"].includes(submission.status)
+    || ["needs_action", "partial", "failed"].includes(submission.execution_status);
+}
+
+function rememberSubmissionSource(batch, rawText) {
+  const lines = rawText.split(/\r?\n/).filter(line => line.trim());
+  const batchID = batch?.batch_id || batch?.id;
+  if (!batchID || !lines.length) return;
+  submissionSourceState.set(batchID, lines);
+}
+
+function sourceLineFor(submission) {
+  const lines = submissionSourceState.get(submission.batch_id);
+  const position = Number(submission.batch_position || 1);
+  return lines?.[position - 1] || null;
+}
+
+function formatTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(date);
+}
+
+function formatMoney(cents) {
+  const value = Number(cents);
+  return `¥${(Number.isFinite(value) ? value / 100 : 0).toFixed(2)}`;
+}
+
+function setActivePage(page) {
+  const allowed = page === "profile" || (page === "admin" && auth?.isAdmin) ? page : "tasks";
+  activePage = allowed;
+  const loggedIn = Boolean(auth);
+  elements.submitBand.hidden = !loggedIn || allowed !== "tasks";
+  elements.tasksBand.hidden = !loggedIn || allowed !== "tasks";
+  elements.profileBand.hidden = !loggedIn || allowed !== "profile";
+  elements.adminBand.hidden = !loggedIn || !auth?.isAdmin || allowed !== "admin";
+  if (allowed !== "admin") clearTimeout(adminRefreshTimer);
+  for (const button of elements.accountNavigation.querySelectorAll(".nav-button")) {
+    button.classList.toggle("active", button.dataset.page === allowed);
+  }
+  if (allowed === "profile") refreshProfile({ quiet: true });
+  if (allowed === "admin") refreshAdminConsole();
+}
+
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds) || 0);
+  if (seconds < 60) return `${Math.round(seconds)} 秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分 ${Math.round(seconds % 60)} 秒`;
+  return `${Math.floor(seconds / 3600)} 小时 ${Math.floor((seconds % 3600) / 60)} 分`;
+}
+
+function renderAdminQueueMetrics(metrics, { statusMessage = "" } = {}) {
+  elements.adminQueueMetrics.replaceChildren();
+  const values = [
+    ["等待任务", metrics?.pending ?? 0],
+    ["执行中", metrics?.processing ?? 0],
+    ["异常占用", metrics?.stale ?? 0],
+    ["活跃账号", metrics?.active_accounts ?? 0],
+    ["近 1 小时完成", metrics?.completed_last_hour ?? 0],
+    ["近 1 小时失败", metrics?.failed_last_hour ?? 0],
+    ["最长等待", formatDuration(metrics?.oldest_pending_seconds)],
+  ];
+  const grid = document.createElement("div");
+  grid.className = "queue-metrics-grid";
+  for (const [label, value] of values) {
+    const card = document.createElement("span");
+    const caption = document.createElement("small");
+    const result = document.createElement("strong");
+    caption.textContent = label;
+    result.textContent = String(value);
+    card.append(caption, result);
+    grid.append(card);
+  }
+  const agents = Array.isArray(metrics?.online_agents) ? metrics.online_agents : [];
+  const agentLine = document.createElement("p");
+  agentLine.className = "queue-agent-line";
+  agentLine.textContent = statusMessage || (agents.length
+    ? `在线 Agent：${agents.map(agent => `${agent.agent_id}（${agent.active_tasks}/${agent.worker_count}）`).join("、")}`
+    : "在线 Agent：暂无");
+  elements.adminQueueMetrics.append(grid, agentLine);
+}
+
+function showAuthView(view, { updateHistory = false } = {}) {
+  authView = view === "register" ? "register" : "login";
+  elements.loginView.hidden = authView !== "login";
+  elements.registerView.hidden = authView !== "register";
+  if (!auth) elements.accountTitle.textContent = authView === "register" ? "注册" : "登录";
+  if (updateHistory) {
+    const url = new URL(window.location.href);
+    url.hash = authView === "register" ? "register" : "";
+    window.history.pushState(null, "", url);
+  }
+}
+
+function updateAuthUI() {
+  const loggedIn = Boolean(auth);
+  elements.authForms.hidden = loggedIn;
+  elements.userSession.hidden = !loggedIn;
+  elements.accountTitle.textContent = loggedIn ? "账户" : authView === "register" ? "注册" : "登录";
+  elements.loggedUsername.textContent = loggedIn ? auth.username : "";
+  elements.adminNavButton.hidden = !loggedIn || !auth?.isAdmin;
+  elements.submit.disabled = !api || !loggedIn;
+  elements.refresh.disabled = !api || !loggedIn;
+  elements.loginButton.disabled = !api;
+  elements.registerButton.disabled = !api;
+  if (loggedIn) setActivePage(activePage);
+  if (!loggedIn) {
+    activePage = "tasks";
+    elements.submitBand.hidden = true;
+    elements.tasksBand.hidden = true;
+    elements.profileBand.hidden = true;
+    elements.adminBand.hidden = true;
+    showAuthView(authView);
+    clearTimeout(refreshTimer);
+    elements.connection.textContent = api ? "请登录后查看任务" : "云端尚未配置";
+  }
+}
+
+function renderAdminCodes(codes) {
+  elements.adminCodeList.replaceChildren();
+  const availableCount = codes.filter(item => !item.used_at).length;
+  const usedCount = codes.length - availableCount;
+  elements.adminAvailableCount.textContent = `可用邀请码 ${availableCount}`;
+  elements.adminUsedCount.textContent = `今日已使用 ${usedCount}`;
+  if (!codes.length) {
+    elements.adminCodeList.textContent = "今天还没有邀请码";
+    return;
+  }
+  for (const item of codes) {
+    const row = document.createElement("div");
+    row.className = `admin-code-row${item.used_at ? " used" : ""}`;
+    const code = document.createElement("code");
+    code.textContent = item.code;
+    const details = document.createElement("div");
+    details.className = "admin-code-details";
+    const state = document.createElement("strong");
+    state.className = `admin-state ${item.used_at ? "used" : "available"}`;
+    state.textContent = item.used_at ? "已使用" : "未使用";
+    details.append(state);
+    if (item.used_at) {
+      const usage = document.createElement("span");
+      usage.textContent = `${item.used_username || "账号已删除"} · ${formatTime(item.used_at)}`;
+      details.append(usage);
+    }
+    row.append(code, details);
+    elements.adminCodeList.append(row);
+  }
+}
+
+function renderAdminUsers(users) {
+  elements.adminUserList.replaceChildren();
+  elements.adminUserCount.textContent = `注册账号 ${users.length}`;
+  if (!users.length) {
+    elements.adminUserList.textContent = "还没有注册账号";
+    return;
+  }
+  for (const item of users) {
+    const row = document.createElement("div");
+    row.className = "admin-user-row";
+    const identity = document.createElement("div");
+    identity.className = "admin-user-identity";
+    const username = document.createElement("strong");
+    username.textContent = item.username;
+    const role = document.createElement("span");
+    role.textContent = item.is_admin ? "管理员 · 免扣费" : `普通账号 · 余额 ${formatMoney(item.balance_cents)}`;
+    identity.append(username, role);
+    const activity = document.createElement("div");
+    activity.className = "admin-user-activity";
+    const created = document.createElement("span");
+    created.textContent = `注册 ${formatTime(item.created_at)}`;
+    const lastLogin = document.createElement("span");
+    lastLogin.textContent = item.last_login_at ? `最近登录 ${formatTime(item.last_login_at)}` : "尚未登录";
+    activity.append(created, lastLogin);
+    const actions = document.createElement("div");
+    actions.className = "admin-user-actions";
+    if (item.is_admin) {
+      const protectedLabel = document.createElement("span");
+      protectedLabel.className = "admin-protected-label";
+      protectedLabel.textContent = "管理员账号受保护";
+      actions.append(protectedLabel);
+    } else {
+      const resetButton = document.createElement("button");
+      resetButton.className = "secondary-button admin-action-button";
+      resetButton.type = "button";
+      resetButton.title = "重置密码为 11111111";
+      resetButton.innerHTML = '<i data-lucide="key-round"></i><span>重置密码</span>';
+      resetButton.addEventListener("click", () => resetRemoteUserPassword(item));
+      const balanceButton = document.createElement("button");
+      balanceButton.className = "secondary-button admin-action-button";
+      balanceButton.type = "button";
+      balanceButton.title = "调整账户余额";
+      balanceButton.innerHTML = '<i data-lucide="wallet-cards"></i><span>调整余额</span>';
+      balanceButton.addEventListener("click", () => adjustRemoteUserBalance(item));
+      const deleteButton = document.createElement("button");
+      deleteButton.className = "danger-button admin-action-button";
+      deleteButton.type = "button";
+      deleteButton.title = "删除账号";
+      deleteButton.innerHTML = '<i data-lucide="trash-2"></i><span>删除账号</span>';
+      deleteButton.addEventListener("click", () => deleteRemoteUser(item));
+      actions.append(balanceButton, resetButton, deleteButton);
+    }
+    row.append(identity, activity, actions);
+    elements.adminUserList.append(row);
+  }
+  window.lucide?.createIcons();
+}
+
+async function adjustRemoteUserBalance(user) {
+  if (!auth?.isAdmin) return;
+  const amountText = prompt(`调整 ${user.username} 的余额（元）。加款输入正数，扣款输入负数：`, "10.00");
+  if (amountText === null) return;
+  const amountCents = Math.round(Number(amountText) * 100);
+  if (!Number.isInteger(amountCents) || amountCents === 0) {
+    elements.adminMessage.textContent = "请输入有效且不为 0 的金额";
+    return;
+  }
+  const reason = prompt("请输入本次余额调整原因：", "管理员人工调整");
+  if (!reason?.trim()) return;
+  try {
+    await api.adminAdjustRemoteUserBalance(auth.sessionToken, user.id, amountCents, reason.trim());
+    await refreshAdminConsole({ successMessage: `${user.username} 余额已调整 ${formatMoney(amountCents)}` });
+  } catch (error) {
+    elements.adminMessage.textContent = `余额调整失败：${friendlyError(error)}`;
+  }
+}
+
+function renderAdminRechargeRequests(requests) {
+  elements.adminRechargeList.replaceChildren();
+  if (!requests.length) {
+    elements.adminRechargeList.textContent = "暂无充值申请";
+    return;
+  }
+  for (const item of requests) {
+    const row = document.createElement("div");
+    row.className = "admin-recharge-row";
+    const details = document.createElement("div");
+    details.className = "admin-user-identity";
+    const title = document.createElement("strong");
+    title.textContent = `${item.username} · ${formatMoney(item.amount_cents)}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${rechargeStatusLabel(item.status)} · ${formatTime(item.created_at)}`;
+    details.append(title, meta);
+    const actions = document.createElement("div");
+    actions.className = "admin-user-actions";
+    if (item.status === "pending") {
+      for (const [decision, label, className] of [["approved", "确认到账", "primary-button"], ["rejected", "拒绝", "danger-button"]]) {
+        const button = document.createElement("button");
+        button.className = `${className} admin-action-button`;
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", () => decideRechargeRequest(item, decision));
+        actions.append(button);
+      }
+    }
+    row.append(details, actions);
+    elements.adminRechargeList.append(row);
+  }
+}
+
+async function decideRechargeRequest(request, decision) {
+  if (!auth?.isAdmin) return;
+  const action = decision === "approved" ? "确认充值到账并增加余额" : "拒绝充值申请";
+  if (!confirm(`${action}：${request.username} ${formatMoney(request.amount_cents)}？`)) return;
+  try {
+    await api.adminDecideRechargeRequest(auth.sessionToken, request.id, decision, decision === "approved" ? "已确认到账" : "管理员拒绝");
+    await refreshAdminConsole({ successMessage: "充值申请已处理" });
+  } catch (error) {
+    elements.adminMessage.textContent = `处理失败：${friendlyError(error)}`;
+  }
+}
+
+async function resetRemoteUserPassword(user) {
+  if (!auth || !confirm(`确定将账号 ${user.username} 的密码重置为 11111111 吗？该账号需要重新登录。`)) return;
+  elements.adminMessage.textContent = `正在重置 ${user.username} 的密码`;
+  try {
+    await api.adminResetRemoteUserPassword(auth.sessionToken, user.id);
+    await refreshAdminConsole({ successMessage: `${user.username} 的密码已重置为 11111111` });
+  } catch (error) {
+    elements.adminMessage.textContent = `重置失败：${friendlyError(error)}`;
+  }
+}
+
+async function deleteRemoteUser(user) {
+  if (!auth || !confirm(`确定删除账号 ${user.username} 吗？该账号的任务和登录会话也会被删除。`)) return;
+  elements.adminMessage.textContent = `正在删除 ${user.username}`;
+  try {
+    await api.adminDeleteRemoteUser(auth.sessionToken, user.id);
+    await refreshAdminConsole({ successMessage: `账号 ${user.username} 已删除` });
+  } catch (error) {
+    elements.adminMessage.textContent = `删除失败：${friendlyError(error)}`;
+  }
+}
+
+async function refreshAdminConsole({ successMessage = "" } = {}) {
+  if (!api || !auth?.isAdmin) return;
+  const activeSession = auth.sessionToken;
+  clearTimeout(adminRefreshTimer);
+  const [codesResult, usersResult, rechargeResult, metricsResult] = await Promise.allSettled([
+    api.adminListInvitationCodes(activeSession),
+    api.adminListRemoteUsers(activeSession),
+    api.adminListRechargeRequests(activeSession),
+    api.adminGetQueueMetrics(activeSession),
+  ]);
+  if (auth?.sessionToken !== activeSession) return;
+
+  const results = [codesResult, usersResult, rechargeResult, metricsResult];
+  if (settledResultsHaveAuthError(results)) {
+    saveAuth(null);
+    elements.authMessage.textContent = "登录状态已失效，请重新登录";
+    return;
+  }
+
+  const errors = [];
+  if (codesResult.status === "fulfilled") {
+    renderAdminCodes(Array.isArray(codesResult.value) ? codesResult.value : []);
+  } else {
+    errors.push(`邀请码：${friendlyError(codesResult.reason)}`);
+  }
+  if (usersResult.status === "fulfilled") {
+    renderAdminUsers(Array.isArray(usersResult.value) ? usersResult.value : []);
+  } else {
+    errors.push(`注册账号：${friendlyError(usersResult.reason)}`);
+  }
+  if (rechargeResult.status === "fulfilled") {
+    renderAdminRechargeRequests(Array.isArray(rechargeResult.value) ? rechargeResult.value : []);
+  } else {
+    errors.push(`充值申请：${friendlyError(rechargeResult.reason)}`);
+  }
+  if (metricsResult.status === "fulfilled") {
+    renderAdminQueueMetrics(metricsResult.value || {});
+  } else if (isMissingAdminMetricsMigration(metricsResult.reason)) {
+    renderAdminQueueMetrics({}, { statusMessage: "队列监控等待数据库迁移 0019" });
+  } else {
+    errors.push(`队列监控：${friendlyError(metricsResult.reason)}`);
+  }
+  elements.adminMessage.textContent = errors.length
+    ? `读取失败：${errors.join("；")}`
+    : successMessage;
+  if (activePage === "admin" && auth?.sessionToken === activeSession) {
+    adminRefreshTimer = setTimeout(() => refreshAdminConsole(), 5000);
+  }
+}
+
+function syncAuthViewFromLocation() {
+  if (!auth) showAuthView(window.location.hash === "#register" ? "register" : "login");
+}
+
+function rechargeStatusLabel(status) {
+  return { pending: "待确认", approved: "已到账", rejected: "已拒绝" }[status] || "状态未知";
+}
+
+function transactionTypeLabel(type) {
+  return {
+    recharge: "充值到账",
+    admin_adjustment: "管理员调整",
+    task_charge: "任务扣费",
+    task_refund: "失败退款",
+  }[type] || "资金变动";
+}
+
+function renderLedger(container, items, itemRenderer, emptyText) {
+  container.replaceChildren();
+  if (!items.length) {
+    container.textContent = emptyText;
+    return;
+  }
+  for (const item of items) container.append(itemRenderer(item));
+}
+
+function renderProfile(profile) {
+  profileState = profile && typeof profile === "object" ? profile : null;
+  elements.walletBalance.textContent = auth?.isAdmin ? "管理员免扣费" : formatMoney(profileState?.balance_cents);
+  elements.walletCharged.textContent = formatMoney(profileState?.total_charged_cents);
+  elements.walletRefunded.textContent = formatMoney(profileState?.total_refunded_cents);
+  elements.rechargeForm.hidden = auth?.isAdmin === true;
+
+  renderLedger(
+    elements.rechargeRequestList,
+    Array.isArray(profileState?.recharge_requests) ? profileState.recharge_requests : [],
+    item => {
+      const row = document.createElement("div");
+      row.className = "ledger-row";
+      const details = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = formatMoney(item.amount_cents);
+      const meta = document.createElement("span");
+      meta.textContent = `${formatTime(item.created_at)}${item.admin_note ? ` · ${item.admin_note}` : ""}`;
+      details.append(title, meta);
+      const status = document.createElement("span");
+      status.className = `ledger-status ${item.status}`;
+      status.textContent = rechargeStatusLabel(item.status);
+      row.append(details, status);
+      return row;
+    },
+    "暂无充值申请",
+  );
+
+  renderLedger(
+    elements.walletTransactionList,
+    Array.isArray(profileState?.transactions) ? profileState.transactions : [],
+    item => {
+      const row = document.createElement("div");
+      row.className = "ledger-row";
+      const details = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = `${transactionTypeLabel(item.type)} · ${item.description || ""}`;
+      const meta = document.createElement("span");
+      meta.textContent = `${formatTime(item.created_at)} · 余额 ${formatMoney(item.balance_after_cents)}`;
+      details.append(title, meta);
+      const amount = document.createElement("strong");
+      amount.className = Number(item.amount_cents) >= 0 ? "money-positive" : "money-negative";
+      amount.textContent = `${Number(item.amount_cents) >= 0 ? "+" : "-"}${formatMoney(Math.abs(Number(item.amount_cents)))}`;
+      row.append(details, amount);
+      return row;
+    },
+    "暂无资金变动",
+  );
+}
+
+async function refreshProfile({ quiet = false } = {}) {
+  if (!api || !auth) return;
+  const activeSession = auth.sessionToken;
+  try {
+    const profile = await api.getMyProfile(activeSession);
+    if (auth?.sessionToken !== activeSession) return;
+    renderProfile(profile);
+  } catch (error) {
+    if (isAuthError(error)) {
+      saveAuth(null);
+      elements.authMessage.textContent = "登录状态已失效，请重新登录";
+      return;
+    }
+    if (!quiet) elements.profileMessage.textContent = `读取失败：${friendlyError(error)}`;
+  }
+}
+
+function renderTask(submission) {
+  const status = statusInfo(submission);
+  const progress = progressInfo(submission);
+  const card = elements.template.content.firstElementChild.cloneNode(true);
+  card.dataset.status = status.tone;
+
+  const position = Number(submission.batch_position || 1);
+  const batchSize = Number(submission.batch_size || 1);
+  const defaultLabel = batchSize > 1 ? `账号任务 ${position}` : `账号任务`;
+  card.querySelector(".task-title").textContent = submission.task_label || defaultLabel;
+  card.querySelector(".task-time").textContent = batchSize > 1
+    ? `第 ${position} / ${batchSize} 项`
+    : formatTime(submission.created_at);
+  card.querySelector(".status-badge").textContent = status.label;
+  card.querySelector(".progress-count").textContent = `进度 ${progress.settled} / ${progress.total}`;
+  card.querySelector(".progress-percent").textContent = `${progress.percent}%`;
+  card.querySelector(".progress-track").value = progress.percent;
+  card.querySelector(".completed-count").textContent = `完成 ${progress.completed}`;
+  card.querySelector(".failed-count").textContent = `失败 ${progress.failed}`;
+  const unitSummary = submissionUnitSummary(submission);
+  if (unitSummary) {
+    card.querySelector(".available-unit-count").textContent = `${unitSummary.availableUnitCount} 个`;
+    card.querySelector(".selected-unit-count").textContent = `${unitSummary.selectedUnitCount} 个`;
+    card.querySelector(".estimated-unit-charge").textContent = formatMoney(unitSummary.estimatedAmountCents);
+  }
+  const billingState = card.querySelector(".billing-state");
+  const billingLabels = {
+    charged: `已扣费 ${formatMoney(submission.charge_amount_cents)}`,
+    refunded: `执行失败，已退款 ${formatMoney(submission.charge_amount_cents)}`,
+    exempt: "管理员任务，免扣费",
+    unpriced: "尚未开始扣费",
+  };
+  billingState.textContent = billingLabels[submission.charge_status] || "等待计费";
+  billingState.dataset.status = submission.charge_status || "unpriced";
+  card.querySelector(".task-message").textContent = messageFor(submission);
+  card.querySelector(".attempt-count").textContent = `执行次数 ${submission.attempt_count || 0}`;
+
+  const cancel = card.querySelector(".cancel-button");
+  cancel.hidden = !["pending", "processing"].includes(submission.status) || submission.cancel_requested;
+  cancel.addEventListener("click", () => cancelSubmission(submission));
+
+  const remove = card.querySelector(".delete-button");
+  remove.hidden = ["pending", "processing"].includes(submission.status);
+  remove.addEventListener("click", () => deleteSubmission(submission));
+
+  const retry = card.querySelector(".retry-button");
+  retry.hidden = !isRetryableSubmission(submission);
+  retry.disabled = retryingSubmissionIDs.has(submission.id);
+  retry.title = "重新执行这一条任务";
+  retry.addEventListener("click", () => retrySubmission(submission));
+  return card;
+}
+
+function batchSummary(items) {
+  const total = items.length;
+  const finished = items.filter(item => !["pending", "processing"].includes(item.status)).length;
+  const failed = items.filter(item => item.status === "failed" || item.execution_status === "failed").length;
+  const canceled = items.filter(item => item.status === "canceled").length;
+  const parts = [`已结束 ${finished} / ${total}`];
+  if (failed) parts.push(`失败 ${failed}`);
+  if (canceled) parts.push(`取消 ${canceled}`);
+  return parts.join(" · ");
+}
+
+function scoreText(value) {
+  return Number.isFinite(value) ? Number(value).toFixed(2) : "-";
+}
+
+function scoreBandGrid(distribution) {
+  const grid = document.createElement("div");
+  grid.className = "score-band-grid";
+  const bands = [
+    ["100分", distribution.score100],
+    ["90-99", distribution.score90To99],
+    ["80-89", distribution.score80To89],
+    ["60-79", distribution.score60To79],
+    ["60以下", distribution.scoreBelow60],
+  ];
+  for (const [label, count] of bands) {
+    const item = document.createElement("div");
+    const value = document.createElement("strong");
+    value.textContent = String(count);
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    item.append(value, caption);
+    grid.append(item);
+  }
+  return grid;
+}
+
+function scoreDistributionRow(label, distribution) {
+  const row = document.createElement("div");
+  row.className = "score-distribution-row";
+  const caption = document.createElement("span");
+  caption.className = "score-distribution-label";
+  caption.textContent = label;
+  row.append(caption, scoreBandGrid(distribution));
+  return row;
+}
+
+function renderBatchScoreSummary(items) {
+  const summary = batchScoreSummary(items);
+  const section = document.createElement("section");
+  section.className = "batch-score-summary";
+
+  const heading = document.createElement("header");
+  const title = document.createElement("h4");
+  title.innerHTML = '<i data-lucide="chart-no-axes-column"></i><span>执行完成总分</span>';
+  const status = document.createElement("p");
+  status.textContent = `${summary.statusText} · 计分账号 ${summary.scoredAccountCount} · 无计分 ${summary.unscoredAccountCount}`;
+  heading.append(title, status);
+  section.append(heading);
+
+  if (summary.averageScore === null) {
+    const empty = document.createElement("p");
+    empty.className = "score-summary-empty";
+    empty.textContent = "暂无真实计分数据";
+    section.append(empty);
+    return section;
+  }
+
+  const overview = document.createElement("div");
+  overview.className = "score-overview-grid";
+  for (const [label, value] of [
+    ["账号平均", summary.averageScore],
+    ["最高", summary.highestScore],
+    ["最低", summary.lowestScore],
+  ]) {
+    const metric = document.createElement("div");
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const score = document.createElement("strong");
+    score.textContent = scoreText(value);
+    metric.append(caption, score);
+    overview.append(metric);
+  }
+  section.append(overview);
+  section.append(scoreDistributionRow("账号分布", summary.accountDistribution));
+  section.append(scoreDistributionRow("计分题分布", summary.itemDistribution));
+  return section;
+}
+
+function render() {
+  const submissions = [...submissionState.values()];
+  const groups = groupSubmissions(submissions);
+  elements.list.replaceChildren();
+  elements.count.textContent = `${groups.length} 批 · ${submissions.length} 个账号`;
+  elements.empty.hidden = groups.length > 0;
+
+  for (const [index, group] of groups.entries()) {
+    const status = batchStatus(group.items);
+    const section = document.createElement("section");
+    section.className = "batch-group";
+    section.dataset.status = status.tone;
+
+    const header = document.createElement("header");
+    header.className = "batch-header";
+    const identity = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = `批次 ${groups.length - index} · ${group.items.length} 个账号`;
+    const details = document.createElement("p");
+    details.textContent = `${formatTime(group.createdAt)} · ${batchSummary(group.items)}`;
+    identity.append(title, details);
+    const badge = document.createElement("span");
+    badge.className = "batch-status-badge";
+    badge.textContent = status.label;
+    header.append(identity, badge);
+
+    const taskList = document.createElement("div");
+    taskList.className = "batch-task-list";
+    for (const submission of group.items) taskList.append(renderTask(submission));
+    section.append(header, renderBatchScoreSummary(group.items), taskList);
+    elements.list.append(section);
+  }
+  window.lucide?.createIcons();
+}
+
+async function refreshSubmissions({ quiet = false } = {}) {
+  if (!api || !auth) return;
+  const activeSession = auth.sessionToken;
+  const requestID = ++refreshRequestID;
+  try {
+    const submissions = await api.listMine(activeSession);
+    if (auth?.sessionToken !== activeSession || requestID !== refreshRequestID) return;
+    submissionState.clear();
+    for (const submission of Array.isArray(submissions) ? submissions : []) {
+      if (submission?.id) submissionState.set(submission.id, submission);
+    }
+    elements.connection.textContent = "云端连接正常";
+  } catch (error) {
+    if (isAuthError(error)) {
+      saveAuth(null);
+      elements.authMessage.textContent = "登录状态已失效，请重新登录";
+      return;
+    }
+    elements.connection.textContent = "云端连接异常";
+    if (!quiet) elements.message.textContent = `读取失败：${friendlyError(error)}`;
+  }
+  render();
+  scheduleRefresh();
+}
+
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  if (!auth) return;
+  const active = [...submissionState.values()].some(item => ["pending", "processing"].includes(item.status));
+  if (active) refreshTimer = setTimeout(() => refreshSubmissions({ quiet: true }), 3000);
+}
+
+async function cancelSubmission(submission) {
+  if (!auth || !confirm("只取消这一条任务吗？其他任务会继续执行。")) return;
+  try {
+    await api.cancelMine(submission.id, auth.sessionToken);
+    await refreshSubmissions({ quiet: true });
+  } catch (error) {
+    elements.message.textContent = `取消失败：${friendlyError(error)}`;
+  }
+}
+
+async function deleteSubmission(submission) {
+  if (!auth) return;
+  if (["pending", "processing"].includes(submission.status)) {
+    elements.message.textContent = "运行中的任务请先取消，结束后才能删除记录";
+    return;
+  }
+  if (!confirm("永久删除这一条任务记录吗？删除记录不会退款，资金明细仍会保留。")) return;
+
+  try {
+    const deleted = await api.removeMine(submission.id, auth.sessionToken);
+    if (deleted !== true) throw new Error("任务不存在或已经删除");
+    submissionState.delete(submission.id);
+    elements.message.textContent = "已删除 1 条任务";
+    render();
+    scheduleRefresh();
+  } catch (error) {
+    elements.message.textContent = `删除失败：${friendlyError(error)}`;
+  }
+}
+
+async function retrySubmission(submission) {
+  if (!auth || retryingSubmissionIDs.has(submission.id)) return;
+  retryingSubmissionIDs.add(submission.id);
+  render();
+  try {
+    // Older deployments can retry in place. Newer deployments redact terminal
+    // credentials, so fall back to a fresh single-line submission from memory.
+    const retriedInPlace = await api.retryMine(submission.id, auth.sessionToken);
+    if (retriedInPlace === true) {
+      elements.message.textContent = "任务已重新排队，等待电脑执行";
+      await refreshSubmissions({ quiet: true });
+      return;
+    }
+
+    const rawLine = sourceLineFor(submission);
+    if (!rawLine) {
+      throw new Error("为保护账号信息，云端已清理这条失败任务的原始内容；请将这一行任务重新粘贴到上方后提交");
+    }
+    const viewToken = randomToken();
+    const created = await api.submitBatch({
+      rawText: rawLine,
+      clientId: clientId(),
+      viewToken,
+      sessionToken: auth.sessionToken,
+    });
+    rememberSubmissionSource(created, rawLine);
+    elements.message.textContent = "已重新提交这一条任务，等待电脑执行";
+    await refreshSubmissions({ quiet: true });
+  } catch (error) {
+    elements.message.textContent = `重试失败：${friendlyError(error)}`;
+  } finally {
+    retryingSubmissionIDs.delete(submission.id);
+    render();
+  }
+}
+
+elements.showRegisterLink.addEventListener("click", event => {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  showAuthView("register", { updateHistory: true });
+});
+
+elements.showLoginLink.addEventListener("click", event => {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  showAuthView("login", { updateHistory: true });
+});
+
+window.addEventListener("hashchange", syncAuthViewFromLocation);
+window.addEventListener("popstate", syncAuthViewFromLocation);
+
+elements.accountNavigation.addEventListener("click", event => {
+  const button = event.target.closest("button[data-page]");
+  if (!button) return;
+  setActivePage(button.dataset.page);
+});
+
+elements.loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  elements.loginButton.disabled = true;
+  try {
+    const result = await api.login({
+      username: elements.loginUsername.value,
+      password: elements.loginPassword.value,
+    });
+    saveAuth({ sessionToken: result.session_token, username: result.username, isAdmin: result.is_admin === true });
+    elements.loginPassword.value = "";
+    elements.authMessage.textContent = "登录成功";
+    render();
+    await refreshSubmissions({ quiet: true });
+    await refreshProfile({ quiet: true });
+    await refreshAdminConsole();
+  } catch (error) {
+    elements.authMessage.textContent = `登录失败：${friendlyError(error)}`;
+  } finally {
+    elements.loginButton.disabled = false;
+  }
+});
+
+elements.registerForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  elements.registerButton.disabled = true;
+  try {
+    const result = await api.register({
+      username: elements.registerUsername.value,
+      password: elements.registerPassword.value,
+      invitationCode: elements.invitationCode.value,
+    });
+    saveAuth({ sessionToken: result.session_token, username: result.username });
+    elements.registerPassword.value = "";
+    elements.invitationCode.value = "";
+    elements.authMessage.textContent = "注册成功，邀请码已使用";
+    render();
+    await refreshSubmissions({ quiet: true });
+    await refreshProfile({ quiet: true });
+  } catch (error) {
+    elements.authMessage.textContent = `注册失败：${friendlyError(error)}`;
+  } finally {
+    elements.registerButton.disabled = false;
+  }
+});
+
+elements.logoutButton.addEventListener("click", async () => {
+  const activeSession = auth?.sessionToken;
+  if (!activeSession) return;
+  elements.logoutButton.disabled = true;
+  try {
+    await api.logout(activeSession);
+  } catch {
+    // The local session is cleared even when the remote session already expired.
+  } finally {
+    saveAuth(null);
+    showAuthView("login", { updateHistory: true });
+    submissionState.clear();
+    elements.authMessage.textContent = "已退出登录";
+    elements.adminMessage.textContent = "";
+    elements.profileMessage.textContent = "";
+    profileState = null;
+    renderAdminCodes([]);
+    renderAdminUsers([]);
+    renderAdminRechargeRequests([]);
+    renderAdminQueueMetrics({});
+    renderProfile(null);
+    render();
+    elements.logoutButton.disabled = false;
+  }
+});
+
+elements.issueInvitationButton.addEventListener("click", async () => {
+  if (!auth?.isAdmin) return;
+  elements.issueInvitationButton.disabled = true;
+  elements.adminMessage.textContent = "正在生成邀请码";
+  try {
+    await api.adminIssueInvitationCodes(auth.sessionToken, 10);
+    await refreshAdminConsole({ successMessage: "已刷新 10 个当天可用邀请码，已使用记录已保留" });
+  } catch (error) {
+    elements.adminMessage.textContent = `生成失败：${friendlyError(error)}`;
+  } finally {
+    elements.issueInvitationButton.disabled = false;
+  }
+});
+
+elements.rechargeForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!auth || auth.isAdmin) return;
+  const amount = Number(elements.rechargeAmount.value);
+  const amountCents = Math.round(amount * 100);
+  if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > 1000000) {
+    elements.profileMessage.textContent = "充值金额必须在 1 元到 10000 元之间";
+    return;
+  }
+  elements.rechargeButton.disabled = true;
+  elements.profileMessage.textContent = "正在提交充值申请";
+  try {
+    await api.createRechargeRequest(auth.sessionToken, amountCents, elements.rechargeNote.value.trim() || null);
+    elements.rechargeAmount.value = "";
+    elements.rechargeNote.value = "";
+    elements.profileMessage.textContent = "充值申请已提交，等待管理员确认到账";
+    await refreshProfile({ quiet: true });
+    if (auth.isAdmin) await refreshAdminConsole();
+  } catch (error) {
+    elements.profileMessage.textContent = `提交失败：${friendlyError(error)}`;
+  } finally {
+    elements.rechargeButton.disabled = false;
+  }
+});
+
+elements.rawText.addEventListener("input", () => {
+  elements.lineCount.textContent = `已输入 ${countLines(elements.rawText.value)} 条`;
+});
+
+elements.form.addEventListener("submit", async event => {
+  event.preventDefault();
+  elements.message.textContent = "";
+  if (!auth) {
+    elements.authMessage.textContent = "请先登录或注册";
+    return;
+  }
+  const rawText = elements.rawText.value;
+  const lineCount = countLines(rawText);
+  if (!lineCount) {
+    elements.message.textContent = "请先输入账号任务";
+    elements.rawText.focus();
+    return;
+  }
+
+  const viewToken = randomToken();
+  elements.submit.disabled = true;
+  try {
+    const created = await api.submitBatch({
+      rawText,
+      clientId: clientId(),
+      viewToken,
+      sessionToken: auth.sessionToken,
+    });
+    rememberSubmissionSource(created, rawText);
+    elements.rawText.value = "";
+    elements.lineCount.textContent = "已输入 0 条";
+    elements.message.textContent = `提交成功，云端已保存 ${created.line_count} 条`;
+    await refreshSubmissions({ quiet: true });
+  } catch (error) {
+    if (isAuthError(error)) {
+      saveAuth(null);
+      elements.authMessage.textContent = "登录状态已失效，请重新登录";
+    } else {
+      elements.message.textContent = `提交失败：${friendlyError(error)}`;
+    }
+  } finally {
+    elements.submit.disabled = !api || !auth;
+  }
+});
+
+elements.refresh.addEventListener("click", () => {
+  refreshSubmissions();
+  refreshProfile();
+  refreshAdminConsole();
+});
+
+try {
+  api = new SupabaseSubmissionApi(window.REMOTE_TASK_CONFIG || {});
+  elements.connection.textContent = auth ? "正在读取提交记录" : "请登录后查看任务";
+  updateAuthUI();
+  render();
+  refreshSubmissions({ quiet: true });
+  refreshProfile({ quiet: true });
+  refreshAdminConsole();
+} catch (error) {
+  elements.connection.textContent = "云端尚未配置";
+  elements.message.textContent = friendlyError(error);
+  elements.submit.disabled = true;
+  updateAuthUI();
+  render();
+}
