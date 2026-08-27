@@ -74,6 +74,7 @@ let profileState = null;
 const submissionState = new Map();
 const submissionSourceState = new Map();
 const retryingSubmissionIDs = new Set();
+const retryFeedbackState = new Map();
 
 function countLines(value) {
   return value.split(/\r?\n/).filter(line => line.trim()).length;
@@ -638,7 +639,7 @@ function renderTask(submission) {
   };
   billingState.textContent = billingLabels[submission.charge_status] || "等待计费";
   billingState.dataset.status = submission.charge_status || "unpriced";
-  card.querySelector(".task-message").textContent = messageFor(submission);
+  card.querySelector(".task-message").textContent = retryFeedbackState.get(submission.id) || messageFor(submission);
   card.querySelector(".attempt-count").textContent = `执行次数 ${submission.attempt_count || 0}`;
 
   const cancel = card.querySelector(".cancel-button");
@@ -653,6 +654,7 @@ function renderTask(submission) {
   retry.hidden = !isRetryableSubmission(submission);
   retry.disabled = retryingSubmissionIDs.has(submission.id);
   retry.title = "重新执行这一条任务";
+  retry.querySelector("span").textContent = retry.disabled ? "重试中…" : "重试";
   retry.addEventListener("click", () => retrySubmission(submission));
   return card;
 }
@@ -846,20 +848,24 @@ async function deleteSubmission(submission) {
 async function retrySubmission(submission) {
   if (!auth || retryingSubmissionIDs.has(submission.id)) return;
   retryingSubmissionIDs.add(submission.id);
+  retryFeedbackState.set(submission.id, "正在重新提交这一条任务…");
+  elements.message.textContent = "正在重新提交这一条任务…";
   render();
   try {
     // Older deployments can retry in place. Newer deployments redact terminal
     // credentials, so fall back to a fresh single-line submission from memory.
     const retriedInPlace = await api.retryMine(submission.id, auth.sessionToken);
     if (retriedInPlace === true) {
+      retryFeedbackState.set(submission.id, "已重新排队，等待电脑执行");
       elements.message.textContent = "任务已重新排队，等待电脑执行";
       await refreshSubmissions({ quiet: true });
+      retryFeedbackState.delete(submission.id);
       return;
     }
 
     const rawLine = sourceLineFor(submission);
     if (!rawLine) {
-      throw new Error("为保护账号信息，云端已清理这条失败任务的原始内容；请将这一行任务重新粘贴到上方后提交");
+      throw new Error("这条历史任务的原始账号内容已被云端清理；请将这一行任务重新粘贴到上方后提交");
     }
     const viewToken = randomToken();
     const created = await api.submitBatch({
@@ -869,10 +875,13 @@ async function retrySubmission(submission) {
       sessionToken: auth.sessionToken,
     });
     rememberSubmissionSource(created, rawLine);
+    retryFeedbackState.set(submission.id, "已创建新的重试任务，等待电脑执行");
     elements.message.textContent = "已重新提交这一条任务，等待电脑执行";
     await refreshSubmissions({ quiet: true });
   } catch (error) {
-    elements.message.textContent = `重试失败：${friendlyError(error)}`;
+    const detail = `重试失败：${friendlyError(error)}`;
+    retryFeedbackState.set(submission.id, detail);
+    elements.message.textContent = detail;
   } finally {
     retryingSubmissionIDs.delete(submission.id);
     render();

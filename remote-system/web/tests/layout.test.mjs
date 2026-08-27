@@ -68,6 +68,10 @@ test("retry action is available for failed or incomplete tasks", () => {
   assert.match(html, /class="secondary-button retry-button"/);
   assert.match(app, /function isRetryableSubmission\(submission\)/);
   assert.match(app, /retry\.hidden = !isRetryableSubmission\(submission\)/);
+  assert.match(app, /正在重新提交这一条任务/);
+  assert.match(app, /重试中…/);
+  assert.match(app, /retryFeedbackState\.set\(submission\.id/);
+  assert.match(app, /重试失败：\$\{friendlyError\(error\)\}/);
   assert.match(app, /已重新提交这一条任务/);
   assert.match(app, /sourceLineFor\(submission\)/);
 });
